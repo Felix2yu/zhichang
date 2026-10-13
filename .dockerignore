@@ -1,0 +1,10 @@
+.git
+.github
+bin
+out
+web/node_modules
+web/.svelte-kit
+web/build
+deploy/data
+*.log
+.DS_Store

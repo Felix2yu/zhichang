@@ -1,0 +1,69 @@
+{
+  "data": {
+    "metrics": [
+      {
+        "name": "step_count",
+        "units": "count",
+        "data": [
+          {"date": "2026-10-13 08:00:00 +0800", "qty": 1200, "source": "iPhone"},
+          {"date": "2026-10-13 08:00:00 +0800", "qty": 1200, "source": "Apple Watch"},
+          {"date": "2026-10-13 09:00:00 +0800", "qty": 800, "source": "Apple Watch"},
+          {"date": "2026-10-13 09:00:00 +0800", "qty": 850, "source": "iPhone"}
+        ]
+      },
+      {
+        "name": "heart_rate",
+        "units": "bpm",
+        "data": [
+          {"date": "2026-10-13 08:15:00 +0800", "Min": 60, "Avg": 72, "Max": 88, "source": "Apple Watch"},
+          {"date": "2026-10-13 09:15:00 +0800", "Min": 64, "Avg": 76, "Max": 90, "source": "Apple Watch"}
+        ]
+      },
+      {
+        "name": "body_mass",
+        "units": "kg",
+        "data": [
+          {"date": "2026-10-13 07:00:00 +0800", "qty": 68.5, "source": "iPhone"}
+        ]
+      },
+      {
+        "name": "sleep_analysis",
+        "units": "hr",
+        "data": [
+          {
+            "date": "2026-10-13",
+            "totalSleep": 7.5,
+            "asleep": 7.0,
+            "core": 3.5,
+            "deep": 1.5,
+            "rem": 2.0,
+            "sleepStart": "2026-10-12 23:30:00 +0800",
+            "sleepEnd": "2026-10-13 07:00:00 +0800",
+            "inBed": 8.0,
+            "inBedStart": "2026-10-12 23:10:00 +0800",
+            "inBedEnd": "2026-10-13 07:10:00 +0800",
+            "source": "Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "environmental_audio_exposure",
+        "units": "dB",
+        "data": [
+          {"date": "2026-10-13 12:00:00 +0800", "qty": 65, "source": "iPhone"}
+        ]
+      }
+    ],
+    "workouts": [
+      {
+        "name": "Walking",
+        "start": "2026-10-13 08:00:00 +0800",
+        "end": "2026-10-13 08:30:00 +0800",
+        "duration": 30,
+        "totalEnergy": {"qty": 120, "units": "kcal"},
+        "totalDistance": {"qty": 2.4, "units": "km"},
+        "source": "Apple Watch"
+      }
+    ]
+  }
+}

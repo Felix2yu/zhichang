@@ -1,0 +1,42 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.30.2-pg18
+    container_name: zhichang-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zhichang
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zhichang}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - tsdb-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d zhichang"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  zhichang:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: zhichang
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      ZHICHANG_DB_DSN: postgres://postgres:${POSTGRES_PASSWORD:-zhichang}@timescaledb:5432/zhichang?sslmode=disable
+      ZHICHANG_INGEST_TOKEN: ${ZHICHANG_INGEST_TOKEN:?请设置 ZHICHANG_INGEST_TOKEN}
+      ZHICHANG_MCP_TOKEN: ${ZHICHANG_MCP_TOKEN:-}
+      ZHICHANG_HOME_TZ: ${ZHICHANG_HOME_TZ:-Asia/Shanghai}
+      ZHICHANG_HTTP_ADDR: :8787
+      ZHICHANG_LOG_LEVEL: info
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/data
+
+volumes:
+  tsdb-data:

@@ -1,0 +1,19 @@
+# Go
+/zhichangd
+/zhichangctl
+/zhichang-mcp
+/out/
+
+# 前端
+web/node_modules/
+web/.svelte-kit/
+web/build/*
+!web/build/.gitkeep
+web/.env
+web/.env.*
+
+# 本地运行产物
+/data/
+*.log
+.DS_Store
+.env
