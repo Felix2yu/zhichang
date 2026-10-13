@@ -106,9 +106,8 @@
 ```
 zhichang/
 ├── cmd/
-│   ├── zhichangd/          # 服务主入口：HTTP API + 前端静态资源 + MCP over HTTP
-│   ├── zhichang-mcp/       # 独立 stdio MCP 入口（同一套 tool 实现，给 Claude Desktop 用）
-│   └── zhichangctl/        # 运维 CLI：import / backfill / recompute / reindex / doctor
+│   └── zhichangd/          # 唯一二进制：serve（默认）+ migrate / seed-metrics / doctor / mcp
+│                           # 子命令实现在 internal/cli（合并为一个二进制，便于装配式镜像）
 ├── internal/
 │   ├── config/             # env + 配置文件（时区、默认单位、去重模式、保留策略）
 │   ├── domain/
@@ -403,7 +402,7 @@ CREATE TABLE sync_watermark (           -- 每个 automation × metric 的水位
 
 ## 9. MCP 服务器
 
-传输：`zhichang-mcp`（stdio，供 Claude Desktop/本地客户端）+ `zhichangd` 内嵌 `/mcp`（Streamable HTTP，需 token）。二者复用同一套 tool 实现。
+传输：`zhichangd mcp`（stdio，供 Claude Desktop/本地客户端）+ `zhichangd serve` 内嵌 `/mcp`（Streamable HTTP，需 token）。二者复用同一套 tool 实现。
 
 | Tool | 能力 |
 |---|---|

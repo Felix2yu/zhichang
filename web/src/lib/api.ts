@@ -68,20 +68,22 @@ export type SourceRow = {
 	samples: number;
 };
 
+export type SyncRun = {
+	id: number;
+	transport: string;
+	automation_id?: string;
+	session_id?: string;
+	received_at: string;
+	sample_count: number;
+	inserted: number;
+	duplicates: number;
+	status: string;
+	error?: string;
+};
+
 export type SyncStatus = {
-	last_run: {
-		id: number;
-		transport: string;
-		automation_id?: string;
-		session_id?: string;
-		received_at: string;
-		sample_count: number;
-		inserted: number;
-		duplicates: number;
-		status: string;
-		error?: string;
-	} | null;
-	recent_runs: SyncStatus['last_run'][];
+	last_run: SyncRun | null;
+	recent_runs: SyncRun[];
 	watermarks: { automation_id: string; metric: string; last_start_time: string; last_local_date: string }[];
 	missing_days: string[];
 	home_timezone?: string;

@@ -9,8 +9,15 @@
 		"skipLibCheck": true,
 		"sourceMap": true,
 		"strict": true,
-		"moduleResolution": "bundler"
+		"moduleResolution": "bundler",
+		// SvelteKit 3 起 $lib 移除；#lib 由 package.json 的 subpath imports 解析，
+		// 类型检查侧仍需显式声明路径映射（不设 baseUrl：TS 7 起该选项废弃）
+		"paths": {
+			"#lib/*": ["./src/lib/*"]
+		}
 	},
 	"include": ["src", "static", "vite.config.ts"],
-	"exclude": ["node_modules", "build", ".svelte-kit"]
+	// sw-template.js 是 Service Worker 运行时脚本（不在应用编译图内），
+	// 它的 self / caches / FetchEvent 需要 webworker lib，交给浏览器而非 svelte-check 校验
+	"exclude": ["node_modules", "build", ".svelte-kit", "src/sw-template.js"]
 }

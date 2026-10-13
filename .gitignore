@@ -1,14 +1,14 @@
 # Go
 /zhichangd
-/zhichangctl
-/zhichang-mcp
+/bin/
 /out/
 
 # 前端
 web/node_modules/
 web/.svelte-kit/
-web/build/*
-!web/build/.gitkeep
+# adapter-static 每次构建都会清空 build/，占位文件不入库：
+# make build 会在缺目录时自动补，保证 go:embed all:build 始终有东西可嵌
+web/build/
 web/.env
 web/.env.*
 

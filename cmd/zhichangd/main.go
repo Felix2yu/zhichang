@@ -1,10 +1,19 @@
-// Command zhichangd 是知常的主服务：数据接入、查询 API、MCP 与前端静态资源。
+// Command zhichangd 是知常的唯一二进制：主服务、运维子命令与 MCP stdio 通道。
+//
+//	zhichangd                # 等同 serve
+//	zhichangd serve          # 启动 HTTP 服务（接入端点 / 查询 API / MCP over HTTP / 前端）
+//	zhichangd migrate        # 执行数据库迁移
+//	zhichangd seed-metrics   # 补齐内置指标字典
+//	zhichangd doctor         # 检查数据库与数据状态
+//	zhichangd mcp            # 以 stdio 方式提供 MCP 服务（本地 AI 客户端用）
+//	zhichangd version        # 打印版本
 package main
 
 import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,6 +27,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/Felix2yu/zhichang/internal/api"
+	"github.com/Felix2yu/zhichang/internal/cli"
 	"github.com/Felix2yu/zhichang/internal/config"
 	"github.com/Felix2yu/zhichang/internal/domain/metric"
 	ingest "github.com/Felix2yu/zhichang/internal/ingest/httpping"
@@ -28,48 +38,91 @@ import (
 	"github.com/Felix2yu/zhichang/web"
 )
 
-// version 由构建时注入。
-var version = "dev"
+const usage = `知常 —— 自托管健康数据平台
+
+用法:
+  zhichangd [serve]          启动服务（默认）
+  zhichangd migrate          执行数据库迁移
+  zhichangd seed-metrics     补齐内置指标字典
+  zhichangd doctor           检查数据库与数据状态
+  zhichangd mcp              以 stdio 方式提供 MCP 服务
+  zhichangd version          打印版本
+
+运维子命令支持 -dsn 覆盖 ZHICHANG_DB_DSN；其余配置全部来自环境变量。
+`
 
 func main() {
-	cfg, err := config.Load()
+	args := os.Args[1:]
+	cmd := "serve"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		cmd, args = args[0], args[1:]
+	}
+
+	switch cmd {
+	case "serve":
+		if err := serve(); err != nil {
+			slog.Error("服务退出异常", "error", err)
+			os.Exit(1)
+		}
+	case "version", "--version":
+		fmt.Println(version)
+	case "migrate":
+		exitOn(cli.Migrate(args))
+	case "doctor":
+		exitOn(cli.Doctor(args))
+	case "seed-metrics":
+		exitOn(cli.SeedMetrics(args))
+	case "mcp":
+		exitOn(cli.MCP(args))
+	case "help", "-h", "--help":
+		fmt.Print(usage)
+	default:
+		fmt.Fprintf(os.Stderr, "未知命令: %s\n\n", cmd)
+		fmt.Print(usage)
+		os.Exit(2)
+	}
+}
+
+func exitOn(err error) {
 	if err != nil {
-		slog.Error("配置加载失败", "error", err)
+		slog.Error("命令失败", "error", err)
 		os.Exit(1)
 	}
-	logger := newLogger(cfg.LogLevel)
-	slog.SetDefault(logger)
+}
+
+func serve() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	slog.SetDefault(newLogger(cfg.LogLevel))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	db, err := postgres.Open(ctx, cfg)
 	if err != nil {
-		slog.Error("数据库连接失败", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("数据库连接失败: %w", err)
 	}
 	defer db.Close()
 
 	if cfg.MigrateOnBoot {
 		applied, err := db.Migrate(ctx)
 		if err != nil {
-			slog.Error("迁移失败", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("迁移失败: %w", err)
 		}
 		if len(applied) > 0 {
 			slog.Info("已应用迁移", "files", applied)
 		}
 	}
 	if n, err := db.SeedMetrics(ctx, metric.Defaults()); err != nil {
-		slog.Error("指标字典写入失败", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("指标字典写入失败: %w", err)
 	} else if n > 0 {
 		slog.Info("指标字典已补齐", "新增", n)
 	}
 	registry, fromDB, err := db.LoadMetrics(ctx)
 	if err != nil {
-		slog.Error("指标字典加载失败", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("指标字典加载失败: %w", err)
 	}
 	if !fromDB {
 		slog.Warn("metric_defs 为空，使用内置字典", "指标数", len(registry.All()))
@@ -77,8 +130,7 @@ func main() {
 
 	home, err := time.LoadLocation(cfg.HomeTZ)
 	if err != nil {
-		slog.Error("时区加载失败", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("时区加载失败: %w", err)
 	}
 
 	r := chi.NewRouter()
@@ -130,6 +182,7 @@ func main() {
 		slog.Warn("HTTP 关闭异常", "error", err)
 	}
 	slog.Info("知常已停止")
+	return nil
 }
 
 func requireToken(token string, next http.Handler) http.Handler {
