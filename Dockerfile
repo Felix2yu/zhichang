@@ -3,7 +3,7 @@
 # 二进制由 CI 预编译（CGO_ENABLED=0，静态链接）到 bin/zhichangd，前端产物在编译时
 # 已通过 go:embed 打进同一个二进制，因此镜像里既不需要 Go 也不需要 Node 工具链。
 # 本地构建前必须先产出二进制：make build（CI 同样如此，缺产物时 COPY 直接失败）。
-FROM alpine:3.22
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates su-exec tzdata \
 	&& addgroup -g 1000 zhichang \
