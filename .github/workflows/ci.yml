@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    uses: Felix2yu/.github/.github/workflows/reusable-test.yml@v1
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    with:
+      go-dir: .
+      # cmd/zhichangd 带 //go:embed all:build，只测 internal —— 这一步不构建前端，
+      # 跑 ./... 会因「no matching files found」失败
+      test-packages: ./internal/...
+      web-dir: web
+      # 带类型的项目要把类型检查并入构建，否则 build 绿但 svelte-check 有问题没人知道
+      web-build-command: pnpm run check && pnpm run build
+
+  image:
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+    uses: Felix2yu/.github/.github/workflows/reusable-image.yml@v1
+    with:
+      go-dir: .
+      main-package: ./cmd/zhichangd
+      binary-name: zhichangd
+      image-name: ghcr.io/felix2yu/zhichang
+      # 纯 Go（pgx 无 CGO 依赖），静态编译即可
+      cgo: off
+      web-dir: web
+      # 不需要 frontend-stage-command：web/embed.go 的 //go:embed all:build 直接读
+      # web/build（web-dir 构建后就在这里），编译时就打进二进制，镜像里不再 COPY 一份
+
+  release:
+    if: github.event_name == 'release'
+    permissions:
+      contents: write
+    uses: Felix2yu/.github/.github/workflows/reusable-release.yml@v1
+    with:
+      go-dir: .
+      main-package: ./cmd/zhichangd
+      binary-name: zhichangd
+      cgo: off
+      web-dir: web
+      version-var: main.version

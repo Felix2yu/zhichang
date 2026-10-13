@@ -21,6 +21,10 @@ docker compose logs -f zhichang
 
 服务地址 `http://<host>:8787`，数据目录 `deploy/data`（payload 归档）与 TimescaleDB 卷。
 
+镜像由 CI 发到 `ghcr.io/felix2yu/zhichang`（`latest` / `vX.Y.Z`，amd64 + arm64）。
+从源码构建请先 `make web build` 产出 `bin/zhichangd`，再 `make docker`——镜像是装配式的，
+只把预编译的二进制拷进去（前端在 `go build` 时已内嵌）。
+
 ### 本地开发
 
 ```bash
@@ -62,7 +66,7 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 | 日内聚合 | 步数/能量/距离等累计量 `sum()`；心率/体重/HRV 等瞬时量 `mean()`；身高、VO2max 取当日 `last` |
 | 分桶 | 一律按 `local_date`（不是服务端时区），跨时区旅行/夏令时都正确 |
 
-天级聚合落在 `daily_metrics`（每来源）与 `daily_metrics_day`（收敛值）两张表，由摄入写入时按受影响的 `(日期, 指标)` 入队异步重算，可用 `zhichangctl` 手动全量重建。
+天级聚合落在 `daily_metrics`（每来源）与 `daily_metrics_day`（收敛值）两张表，由摄入写入时按受影响的 `(日期, 指标)` 入队异步重算；服务重启后会继续消费未完成的队列。
 
 ## 环境变量
 
@@ -90,7 +94,8 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 {
   "mcpServers": {
     "zhichang": {
-      "command": "/path/to/zhichang-mcp",
+      "command": "/path/to/zhichangd",
+      "args": ["mcp"],
       "env": {
         "ZHICHANG_DB_DSN": "postgres://postgres:postgres@127.0.0.1:5433/zhichang?sslmode=disable",
         "ZHICHANG_HOME_TZ": "Asia/Shanghai"
@@ -109,13 +114,25 @@ claude mcp add --transport http zhichang https://<你的域名>/mcp \
 
 ## 运维
 
+只有一个二进制 `zhichangd`，`serve` 是默认子命令：
+
 ```bash
-zhichangctl migrate         # 执行迁移
-zhichangctl doctor          # 检查库、扩展、数据量、最近同步
-zhichangctl seed-metrics    # 补齐内置指标字典（已存在的不覆盖）
+zhichangd migrate         # 执行迁移
+zhichangd doctor          # 检查库、扩展、数据量、最近同步
+zhichangd seed-metrics    # 补齐内置指标字典（已存在的不覆盖）
+zhichangd version         # 打印版本（CI 注入，本地为 dev）
 ```
 
-手工补数：HAE 手动导出 JSON → `POST /api/ingest/hae`（或离线文件走同一 pipeline 的导入命令）。
+手工补数：HAE 手动导出 JSON → `POST /api/ingest/hae`。
+
+## PWA
+
+站点可安装为 PWA：图标七件套、`manifest.webmanifest`（`any` 与 `maskable` 分离）、
+Service Worker 缓存名按构建版本变化并在 `activate` 阶段清旧。
+
+- `/api/**` 一律走网络、失败不回落壳页，未知 API 路径返回 404 JSON 而不是首页 HTML
+- SW 由 `web/scripts/gen-sw.mjs` 从 `web/src/sw-template.js` 注入构建版本后生成
+  （SvelteKit 3 不支持 `transformIndexHtml`，`vite-plugin-pwa` 注入不了注册脚本）
 
 ## 已知限制
 

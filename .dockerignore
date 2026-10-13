@@ -1,6 +1,5 @@
 .git
 .github
-bin
 out
 web/node_modules
 web/.svelte-kit
