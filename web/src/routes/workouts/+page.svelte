@@ -10,6 +10,14 @@
 
 	let totalMin = $derived(rows.reduce((s, r) => s + r.duration_min, 0));
 	let totalEnergy = $derived(rows.reduce((s, r) => s + (r.total_energy ?? 0), 0));
+	// 总消耗单位取自数据本身：入库时能量已统一到 kcal，这里不写死字面量，
+	// 否则上游再换一次单位（kJ）就会把数值标成 kcal。
+	// 单位混用时求和本身没有意义，此时不标单位；无数据时回落到入库口径 kcal。
+	let energyUnit = $derived.by(() => {
+		const units = new Set(rows.map((r) => r.energy_unit).filter((u): u is string => Boolean(u)));
+		if (units.size === 1) return [...units][0];
+		return units.size === 0 ? 'kcal' : '';
+	});
 	let byType = $derived.by(() => {
 		const m = new Map<string, { count: number; minutes: number }>();
 		for (const r of rows) {
@@ -63,7 +71,9 @@
 		</div>
 		<div class="card px-4 py-3">
 			<div class="text-[12px] text-[var(--color-ink-500)]">总消耗</div>
-			<div class="num mt-1 text-[20px] font-medium">{Math.round(totalEnergy)} kcal</div>
+			<div class="num mt-1 text-[20px] font-medium"
+				>{Math.round(totalEnergy)}{energyUnit ? ` ${energyUnit}` : ''}</div
+			>
 		</div>
 	</div>
 

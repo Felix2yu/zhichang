@@ -2,6 +2,7 @@
 package hae
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,6 +30,46 @@ func (f *Float) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// SourceName 是来源名，兼容 HAE 的两种写法：
+//
+//	"子翼的 Apple Watch"                        —— 旧版导出（字符串）
+//	{"name":"子翼的 Apple Watch","identifier":…} —— 新版导出（对象）
+//
+// 新版把 workouts[].source 从字符串改成对象，若按 string 解析，encoding/json 会抛
+// UnmarshalTypeError 让**整份导出**解析失败（端点回 400，一个指标都入不了库）。
+// 因此这里一律解析成纯名字：认不出的形态按空串处理，绝不让一个字段拖垮整包。
+type SourceName string
+
+// UnmarshalJSON 实现 json.Unmarshaler。
+func (s *SourceName) UnmarshalJSON(b []byte) error {
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		*s = ""
+		return nil
+	}
+	switch trimmed[0] {
+	case '"':
+		var v string
+		if err := json.Unmarshal(trimmed, &v); err != nil {
+			*s = ""
+			return nil
+		}
+		*s = SourceName(v)
+	case '{':
+		var obj struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(trimmed, &obj); err != nil {
+			*s = ""
+			return nil
+		}
+		*s = SourceName(obj.Name)
+	default:
+		*s = ""
+	}
+	return nil
+}
+
 // Payload 是 HAE 导出 JSON 的顶层结构。
 type Payload struct {
 	Data Data `json:"data"`
@@ -50,43 +91,45 @@ type Metric struct {
 
 // Point 是一条原始记录，字段覆盖 HAE 的通用与特殊形态。
 type Point struct {
-	Date       string `json:"date"`
-	StartDate  string `json:"startDate"`
-	EndDate    string `json:"endDate"`
-	Source     string `json:"source"`
-	Device     string `json:"device"`
-	Value      string `json:"value"`
-	MealTime   string `json:"mealTime"`
-	Reason     string `json:"reason"`
-	Qty        Float  `json:"qty"`
-	Min        Float  `json:"Min"`
-	Avg        Float  `json:"Avg"`
-	Max        Float  `json:"Max"`
-	Systolic   Float  `json:"systolic"`
-	Diastolic  Float  `json:"diastolic"`
-	TotalSleep Float  `json:"totalSleep"`
-	Asleep     Float  `json:"asleep"`
-	Core       Float  `json:"core"`
-	Deep       Float  `json:"deep"`
-	REM        Float  `json:"REM"`
-	Awake      Float  `json:"awake"`
-	InBed      Float  `json:"inBed"`
-	SleepStart string `json:"sleepStart"`
-	SleepEnd   string `json:"sleepEnd"`
-	InBedStart string `json:"inBedStart"`
-	InBedEnd   string `json:"inBedEnd"`
+	Date       string     `json:"date"`
+	StartDate  string     `json:"startDate"`
+	EndDate    string     `json:"endDate"`
+	Source     SourceName `json:"source"`
+	Device     string     `json:"device"`
+	Value      string     `json:"value"`
+	MealTime   string     `json:"mealTime"`
+	Reason     string     `json:"reason"`
+	Qty        Float      `json:"qty"`
+	Min        Float      `json:"Min"`
+	Avg        Float      `json:"Avg"`
+	Max        Float      `json:"Max"`
+	Systolic   Float      `json:"systolic"`
+	Diastolic  Float      `json:"diastolic"`
+	TotalSleep Float      `json:"totalSleep"`
+	Asleep     Float      `json:"asleep"`
+	Core       Float      `json:"core"`
+	Deep       Float      `json:"deep"`
+	REM        Float      `json:"REM"`
+	Awake      Float      `json:"awake"`
+	InBed      Float      `json:"inBed"`
+	SleepStart string     `json:"sleepStart"`
+	SleepEnd   string     `json:"sleepEnd"`
+	InBedStart string     `json:"inBedStart"`
+	InBedEnd   string     `json:"inBedEnd"`
 }
 
 // Workout 是一条运动记录（v2 结构）。
 type Workout struct {
-	Name          string         `json:"name"`
-	Start         string         `json:"start"`
-	End           string         `json:"end"`
-	Duration      Float          `json:"duration"`
-	Source        string         `json:"source"`
-	Device        string         `json:"device"`
-	TotalEnergy   Quantity       `json:"totalEnergy"`
+	Name        string     `json:"name"`
+	Start       string     `json:"start"`
+	End         string     `json:"end"`
+	Duration    Float      `json:"duration"`
+	Source      SourceName `json:"source"`
+	Device      string     `json:"device"`
+	TotalEnergy Quantity   `json:"totalEnergy"`
+	// TotalDistance 是旧版的运动总距离字段；新版改叫 Distance，两者取其一。
 	TotalDistance Quantity       `json:"totalDistance"`
+	Distance      Quantity       `json:"distance"`
 	Meta          map[string]any `json:"-"`
 }
 
@@ -94,6 +137,40 @@ type Workout struct {
 type Quantity struct {
 	Qty   Float  `json:"qty"`
 	Units string `json:"units"`
+}
+
+// UnmarshalJSON 容错解析，接受三种形态：
+//
+//	{"qty":316.9,"units":"kJ"}  正常对象
+//	316.9                        裸数值（单位缺失，Qty 照样取到）
+//	[{…},{…}]                    逐点数组等其它形态——整体忽略，不让它拖垮整包
+//
+// 与 Float 同样的取舍：宁可少一个字段，也不能因为上游改结构就让整份导出 400。
+func (q *Quantity) UnmarshalJSON(b []byte) error {
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil
+	}
+	switch trimmed[0] {
+	case '{':
+		var obj struct {
+			Qty   Float  `json:"qty"`
+			Units string `json:"units"`
+		}
+		if err := json.Unmarshal(trimmed, &obj); err != nil {
+			return nil
+		}
+		q.Qty, q.Units = obj.Qty, obj.Units
+	case '[', 't', 'f':
+		return nil // 数组 / 布尔：不是数量形态，忽略
+	default:
+		var num Float
+		if err := num.UnmarshalJSON(trimmed); err != nil {
+			return nil
+		}
+		q.Qty, q.Units = num, ""
+	}
+	return nil
 }
 
 // ParsePayload 解析导出 JSON。

@@ -1,6 +1,7 @@
 package hae
 
 import (
+	"math"
 	"time"
 
 	"github.com/Felix2yu/zhichang/internal/domain/metric"
@@ -50,20 +51,23 @@ func Normalize(p *Payload, reg *metric.Registry, home *time.Location) Result {
 				res.Skipped++
 				continue
 			}
+			// 单位归一到字典口径（kJ → kcal 等）：值与其单位必须一起改。
+			// 只改值不改单位会让展示层按字典单位渲染，把一个 kJ 数值标成 kcal。
+			value, unit := metric.ConvertUnit(v, m.Units, def.Unit)
 			s := sample.Sample{
 				Metric: name,
-				Source: pt.Source,
+				Source: string(pt.Source),
 				Device: pt.Device,
-				Value:  v,
-				Unit:   m.Units,
+				Value:  value,
+				Unit:   unit,
 			}
 			if pt.Min.Set || pt.Avg.Set || pt.Max.Set {
 				if pt.Min.Set {
-					x := pt.Min.Value
+					x, _ := metric.ConvertUnit(pt.Min.Value, m.Units, def.Unit)
 					s.ValueMin = &x
 				}
 				if pt.Max.Set {
-					x := pt.Max.Value
+					x, _ := metric.ConvertUnit(pt.Max.Value, m.Units, def.Unit)
 					s.ValueMax = &x
 				}
 			}
@@ -101,7 +105,7 @@ func Normalize(p *Payload, reg *metric.Registry, home *time.Location) Result {
 func (r *Result) normalizeSleep(m Metric, home *time.Location) {
 	for _, pt := range m.Data {
 		if pt.TotalSleep.Set || pt.Asleep.Set || pt.SleepStart != "" {
-			sess := sample.SleepSession{Source: pt.Source}
+			sess := sample.SleepSession{Source: string(pt.Source)}
 			ptr := func(f Float) *float64 {
 				if !f.Set {
 					return nil
@@ -159,7 +163,7 @@ func (r *Result) normalizeSleep(m Metric, home *time.Location) {
 			r.Skipped++
 			continue
 		}
-		s := sample.Sample{Metric: "sleep_analysis", Source: pt.Source, Device: pt.Device, Value: pt.Qty.Value, Unit: m.Units}
+		s := sample.Sample{Metric: "sleep_analysis", Source: string(pt.Source), Device: pt.Device, Value: pt.Qty.Value, Unit: m.Units}
 		if pt.Value != "" {
 			s.Meta = map[string]any{"stage": pt.Value}
 		}
@@ -174,7 +178,7 @@ func (r *Result) normalizeSleep(m Metric, home *time.Location) {
 // normalizeBloodPressure 把血压拆成收缩压 / 舒张压两条样本。
 func (r *Result) normalizeBloodPressure(m Metric, home *time.Location) {
 	for _, pt := range m.Data {
-		base := sample.Sample{Source: pt.Source, Device: pt.Device, Unit: m.Units}
+		base := sample.Sample{Source: string(pt.Source), Device: pt.Device, Unit: m.Units}
 		if pt.Systolic.Set {
 			s := base
 			s.Metric, s.Value = "blood_pressure_systolic", pt.Systolic.Value
@@ -196,6 +200,14 @@ func (r *Result) normalizeBloodPressure(m Metric, home *time.Location) {
 	}
 }
 
+// 运动记录的单位口径：运动页固定按 kcal / km 展示，
+// 因此能量与距离在入库时就换到这两个单位，展示层不必再猜上游给的是什么单位。
+const (
+	workoutEnergyUnit   = "kcal"
+	workoutDistanceUnit = "km"
+	secondsPerMinute    = 60
+)
+
 func normalizeWorkout(w Workout, home *time.Location) (sample.Workout, bool) {
 	st, offMin, ok := tz.ParseWithFallback(w.Start, home)
 	if !ok {
@@ -203,7 +215,7 @@ func normalizeWorkout(w Workout, home *time.Location) (sample.Workout, bool) {
 	}
 	wo := sample.Workout{
 		Name:        w.Name,
-		Source:      w.Source,
+		Source:      string(w.Source),
 		StartTime:   st,
 		TZOffsetMin: offMin,
 		LocalDate:   tz.LocalDate(st, offMin, home),
@@ -215,22 +227,50 @@ func normalizeWorkout(w Workout, home *time.Location) (sample.Workout, bool) {
 	}
 	wo.TZOffsetMin = tz.OffsetOrDefault(offMin, st, home)
 
+	span := wo.EndTime.Sub(wo.StartTime)
 	if w.Duration.Set {
-		wo.DurationMin = w.Duration.Value
+		wo.DurationMin = workoutDurationMin(w.Duration.Value, span)
 	} else {
-		wo.DurationMin = wo.EndTime.Sub(wo.StartTime).Minutes()
+		wo.DurationMin = span.Minutes()
 	}
 	if w.TotalEnergy.Qty.Set {
-		v := w.TotalEnergy.Qty.Value
+		v, u := metric.ConvertUnit(w.TotalEnergy.Qty.Value, w.TotalEnergy.Units, workoutEnergyUnit)
 		wo.TotalEnergy = &v
-		wo.EnergyUnit = w.TotalEnergy.Units
+		wo.EnergyUnit = u
 	}
-	if w.TotalDistance.Qty.Set {
-		v := w.TotalDistance.Qty.Value
+	// 距离字段新旧两版不同名：旧版 totalDistance、新版 distance，取有值的那个。
+	dist := w.TotalDistance
+	if !dist.Qty.Set {
+		dist = w.Distance
+	}
+	if dist.Qty.Set {
+		v, u := metric.ConvertUnit(dist.Qty.Value, dist.Units, workoutDistanceUnit)
 		wo.TotalDistance = &v
-		wo.DistanceUnit = w.TotalDistance.Units
+		wo.DistanceUnit = u
 	}
 	return wo, true
+}
+
+// workoutDurationMin 把 duration 字段换算成分钟。
+//
+// HAE 老版本按分钟给（duration=30 即 30 分钟），新版本改成了秒
+// （实测 duration 与 end-start 的秒数误差 <0.1%），而两种形态都没有单位标记。
+// 这里用「与起止差值的吻合度」判定：取隐含时长更接近 end-start 的那种解释。
+// 无法判定时（缺 end、跨度为 0 或负）回落到分钟，保持老行为不变。
+//
+// 判错的代价很大——把秒当分钟会让 15 分钟的步行显示成 890 分钟，
+// 所以要靠这个可解释的判据，而不是写死某一版的单位。
+func workoutDurationMin(raw float64, span time.Duration) float64 {
+	spanSec := span.Seconds()
+	if spanSec <= 0 {
+		return raw
+	}
+	asSeconds := math.Abs(raw - spanSec)
+	asMinutes := math.Abs(raw*secondsPerMinute - spanSec)
+	if asSeconds <= asMinutes {
+		return raw / secondsPerMinute
+	}
+	return raw
 }
 
 // pickValue 按字典声明的字段取值。

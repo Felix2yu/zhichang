@@ -1,0 +1,103 @@
+{
+  "data": {
+    "metrics": [
+      {
+        "name": "step_count",
+        "units": "count",
+        "data": [
+          { "date": "2026-10-13 21:00:00 +0800", "qty": 2318, "source": "子翼的Apple\u00a0Watch|子翼的iPhone" }
+        ]
+      },
+      {
+        "name": "active_energy",
+        "units": "kJ",
+        "data": [
+          { "date": "2026-10-13 00:00:00 +0800", "qty": 1090.860848, "source": "子翼的Apple\u00a0Watch" }
+        ]
+      },
+      {
+        "name": "basal_energy_burned",
+        "units": "kJ",
+        "data": [
+          { "date": "2026-10-13 00:00:00 +0800", "qty": 7885.5496910674565, "source": "子翼的Apple\u00a0Watch" }
+        ]
+      },
+      {
+        "name": "heart_rate",
+        "units": "count/min",
+        "data": [
+          {
+            "date": "2026-10-13 00:00:00 +0800",
+            "Avg": 80.07711823265892,
+            "Min": 52,
+            "Max": 130,
+            "source": "子翼的Apple\u00a0Watch"
+          }
+        ]
+      },
+      {
+        "name": "body_mass",
+        "units": "lb",
+        "data": [
+          { "date": "2026-10-13 07:30:00 +0800", "qty": 150, "source": "子翼的iPhone" }
+        ]
+      },
+      {
+        "name": "sleep_analysis",
+        "units": "hr",
+        "data": [
+          {
+            "date": "2026-10-13 00:00:00 +0800",
+            "totalSleep": 7.5,
+            "asleep": 7.1,
+            "core": 4.5,
+            "deep": 0.9,
+            "rem": 1.7,
+            "awake": 0.4,
+            "inBed": 8.0,
+            "inBedStart": "2026-10-12 23:20:00 +0800",
+            "inBedEnd": "2026-10-13 07:20:00 +0800",
+            "sleepStart": "2026-10-12 23:30:00 +0800",
+            "sleepEnd": "2026-10-13 07:10:00 +0800",
+            "source": "子翼的Apple\u00a0Watch"
+          }
+        ]
+      }
+    ],
+    "workouts": [
+      {
+        "name": "户外 步行",
+        "start": "2026-10-14 12:30:37 +0800",
+        "end": "2026-10-14 12:45:28 +0800",
+        "duration": 890.4655394554138,
+        "source": {
+          "name": "子翼的Apple\u00a0Watch",
+          "identifier": "com.apple.health.74AAE5AF-0A6E-4147-9B5C-662D05E7A9E5"
+        },
+        "totalEnergy": { "qty": 316.9891202958506, "units": "kJ" },
+        "distance": { "qty": 0.9632032549719515, "units": "km" },
+        "activeEnergyBurned": { "qty": 197.33744937694033, "units": "kJ" },
+        "location": "户外",
+        "isIndoor": false,
+        "heartRate": {
+          "min": { "qty": 100, "units": "bpm" },
+          "max": { "qty": 121, "units": "bpm" },
+          "avg": { "qty": 109.40714285714286, "units": "bpm" }
+        },
+        "walkingAndRunningDistance": [
+          { "qty": 0.020246102609126744, "units": "km", "date": "2026-10-14 12:30:00 +0800" }
+        ],
+        "metadata": {}
+      },
+      {
+        "name": "Walking",
+        "start": "2026-10-13 08:00:00 +0800",
+        "end": "2026-10-13 08:30:00 +0800",
+        "duration": 30,
+        "totalEnergy": { "qty": 120, "units": "kcal" },
+        "totalDistance": { "qty": 2.4, "units": "km" },
+        "source": "Apple Watch"
+      }
+    ]
+  }
+}

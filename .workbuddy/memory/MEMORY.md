@@ -12,6 +12,17 @@
 - 时区：`local_date` 由 payload 自带偏移推导，服务端时区不参与入库；库内 timestamptz 全 UTC；无偏移回落 `ZHICHANG_HOME_TZ`。
 - 天聚合按 `local_date` 分桶，不用 TimescaleDB cagg（cagg 不支持依赖本地时区的函数）。
 - 写入走 `pgx CopyFrom` → UNLOGGED staging → `INSERT ... ON CONFLICT` 合并（COPY 不支持 ON CONFLICT）。
+- **单位归一（硬约定）**：入库时按字典 `metric_defs.unit` 换算（能源 kJ→kcal、距离 m/mi→km、体重 lb→kg），
+  value 与其 unit **一起**改（含 Min/Max）；展示单位一律取 `preferred_unit`，所以库里必须已是字典口径。
+  只登记数值等价换算；**标签差异**（count/min 与 bpm、ml/(kg·min) 与 mL/min·kg）绝不换算。
+  未知单位宁可原样保留也不猜系数。实现在 internal/domain/metric/unit.go 的 `ConvertUnit`。
+- **解析层容错（硬约定）**：单个字段的形态变化**不允许**导致整份导出解析失败。
+  `SourceName` 兼容 `"名字"` 与 `{name, identifier}`；`Float`/`Quantity` 容忍数字/字符串/对象，
+  认不出按缺失处理。历史教训：HAE 把 `workouts[].source` 从字符串改成对象后，按 string 解析抛
+  UnmarshalTypeError → 端点 400，34 个指标 + 7 运动 + 14 晚睡眠一条都入不了库。
+- 运动口径：`duration_min` 一律存分钟——HAE 老版 `duration` 给分钟、新版给**秒**且无单位标记，
+  按「隐含时长更接近 `end-start`」判定（`workoutDurationMin`）；距离新版叫 `distance`、老版叫
+  `totalDistance`，取有值者；能量统一 kcal、距离统一 km。
 
 ## 本地开发
 ```bash
@@ -37,5 +48,9 @@ ZHICHANG_TEST_DSN=<同上> go test ./...   # 启用集成测试
   而容器日志一片干净，极易误判为服务端问题。空结果集必须编成 `[]`。
   前端侧 `web/src/lib/api.ts` 的 `arr<T>()` 做第二层兜底，新增 api.* 方法时记得套上。
   回归由 internal/store/postgres/json_contract_test.go 锁定。
-- 本机没有 docker CLI（`docker: command not found`，沙箱内外均是），起不了临时库做端到端验证；
-  验证数据库相关行为只能靠 ZHICHANG_TEST_DSN 或契约测试。
+- 本机没有 docker CLI（`docker: command not found`，沙箱内外均是），起不了容器化的临时库；
+  但 **internal/testdb 会用 embedded-postgres 在测试进程内自举一个真 PG18**，
+  所以 `go test ./...` 本身就能跑通集成测试（api/mcp/pipeline/store/httpping 全都在真库上跑），
+  无需 ZHICHANG_TEST_DSN。差异：测试库里 samples 是普通表、不是 hypertable（建表时跳过
+  CREATE EXTENSION timescaledb 与 create_hypertable）；要覆盖分区行为才需要指向真 TimescaleDB。
+  注意首次运行会下载 PG 二进制到用户缓存目录。

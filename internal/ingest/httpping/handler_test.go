@@ -31,6 +31,9 @@ const testToken = "sekret-ingest-token"
 // 真实样例负载：手搓 JSON 会漏掉 HAE 的真实形态（聚合睡眠、Min/Avg/Max 三元组）。
 const realPayloadPath = "../../../testdata/hae_export_v2.json"
 
+// 2026 版 HAE 导出形态：来源是对象、duration 按秒、距离字段叫 distance、能量给 kJ。
+const newShapePayloadPath = "../../../testdata/hae_export_v3.json"
+
 // 一条最小可用负载，用于把体积边界卡到精确字节。
 const minPayload = `{"data":{"metrics":[{"name":"step_count","units":"count",` +
 	`"data":[{"date":"2026-10-13 08:00:00 +0800","qty":100,"source":"iPhone"}]}]}}`
@@ -811,5 +814,64 @@ func TestUnknownMetricStillIngested(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("未知指标也应入库，实际 %d 条", n)
+	}
+}
+
+// TestIngestNewExportShapeIsNotBadRequest 回归的是最贵的一次故障：
+// 新版 HAE 把 workouts[].source 从字符串改成对象后，解析层抛类型错误 → 整包 400，
+// 指标、运动、睡眠一条都进不去，而客户端只看到「请求体不是合法 JSON」。
+// 这里从端点一路验到库里的数值与单位——端点通过但数值虚高的故障同样致命。
+func TestIngestNewExportShapeIsNotBadRequest(t *testing.T) {
+	e := newEnv(t)
+	h := New(e.svc, testToken, 0, "")
+	body, err := os.ReadFile(newShapePayloadPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, h, body, header("session-id", "v3-shape"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("新版导出必须能入库，实际 %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := decode(t, rec)
+	if got.Status != "ok" {
+		t.Fatalf("status 应为 ok，实际 %q（%s）", got.Status, got.Message)
+	}
+	if got.Inserted != 5 || got.Workouts != 2 || got.Sleep != 1 || got.Skipped != 0 {
+		t.Fatalf("入库计数错误: %+v", got)
+	}
+	if len(got.UnknownMetrics) != 0 {
+		t.Fatalf("新版样例不该有未登记指标: %v", got.UnknownMetrics)
+	}
+
+	// 能量必须在端点这一层就已经是字典口径：库里留 kJ 会让界面显示错 4.18 倍
+	var value float64
+	var unit string
+	if err := e.db.Pool.QueryRow(e.ctx,
+		`SELECT value, unit FROM samples WHERE metric='active_energy'`).Scan(&value, &unit); err != nil {
+		t.Fatal(err)
+	}
+	if unit != "kcal" || value < 260.72 || value > 260.73 {
+		t.Fatalf("活动能量应为约 260.72 kcal，实际 %v %s", value, unit)
+	}
+
+	// 运动时长按分钟落库（新版给的是秒）：890 秒 → 14.84 分钟
+	var durationMin float64
+	if err := e.db.Pool.QueryRow(e.ctx,
+		`SELECT duration_min FROM workouts WHERE name='户外 步行'`).Scan(&durationMin); err != nil {
+		t.Fatal(err)
+	}
+	if durationMin < 14.84 || durationMin > 14.85 {
+		t.Fatalf("运动时长应为约 14.84 分钟（秒未换算会得到 890），实际 %v", durationMin)
+	}
+
+	// 距离字段换了名字也必须有值
+	var distance *float64
+	if err := e.db.Pool.QueryRow(e.ctx,
+		`SELECT total_distance FROM workouts WHERE name='户外 步行'`).Scan(&distance); err != nil {
+		t.Fatal(err)
+	}
+	if distance == nil || *distance < 0.96 || *distance > 0.97 {
+		t.Fatalf("运动距离应有值（约 0.963 km），实际 %v", distance)
 	}
 }

@@ -35,8 +35,10 @@ const (
 	wrongValuePayload = `{"data":{"metrics":[{"name":"step_count","units":"count",` +
 		`"data":[{"date":"2026-10-13 08:00:00 +0800","qty":999999,"source":"iPhone"}]}]}}`
 
+	// 时长刻意大于 100 分钟，用来触发注入的 duration_min < 100 约束。
+	// duration 按新版 HAE 的写法给秒数（与 end-start 一致），判据取隐含时长更接近起止差的那种解释。
 	longWorkoutPayload = `{"data":{"workouts":[{"name":"Walking",` +
-		`"start":"2026-10-13 08:00:00 +0800","end":"2026-10-13 08:30:00 +0800","duration":5000,` +
+		`"start":"2026-10-13 08:00:00 +0800","end":"2026-10-13 11:00:00 +0800","duration":10800,` +
 		`"totalEnergy":{"qty":120,"units":"kcal"},"totalDistance":{"qty":2.4,"units":"km"},` +
 		`"source":"Apple Watch"}]}}`
 
