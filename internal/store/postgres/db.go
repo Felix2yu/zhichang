@@ -50,9 +50,9 @@ func (db *DB) Close() {
 
 // ServerInfo 返回数据库与 TimescaleDB 版本，用于 doctor 自检。
 type ServerInfo struct {
-	PGVersion    string
-	TSDBVersion  string
-	Hypertables  []string
+	PGVersion     string
+	TSDBVersion   string
+	Hypertables   []string
 	ChunkInterval string
 }
 

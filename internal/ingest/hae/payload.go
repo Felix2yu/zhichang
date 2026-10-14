@@ -50,43 +50,43 @@ type Metric struct {
 
 // Point 是一条原始记录，字段覆盖 HAE 的通用与特殊形态。
 type Point struct {
-	Date        string `json:"date"`
-	StartDate   string `json:"startDate"`
-	EndDate     string `json:"endDate"`
-	Source      string `json:"source"`
-	Device      string `json:"device"`
-	Value       string `json:"value"`
-	MealTime    string `json:"mealTime"`
-	Reason      string `json:"reason"`
-	Qty         Float  `json:"qty"`
-	Min         Float  `json:"Min"`
-	Avg         Float  `json:"Avg"`
-	Max         Float  `json:"Max"`
-	Systolic    Float  `json:"systolic"`
-	Diastolic   Float  `json:"diastolic"`
-	TotalSleep  Float  `json:"totalSleep"`
-	Asleep      Float  `json:"asleep"`
-	Core        Float  `json:"core"`
-	Deep        Float  `json:"deep"`
-	REM         Float  `json:"REM"`
-	Awake       Float  `json:"awake"`
-	InBed       Float  `json:"inBed"`
-	SleepStart  string `json:"sleepStart"`
-	SleepEnd    string `json:"sleepEnd"`
-	InBedStart  string `json:"inBedStart"`
-	InBedEnd    string `json:"inBedEnd"`
+	Date       string `json:"date"`
+	StartDate  string `json:"startDate"`
+	EndDate    string `json:"endDate"`
+	Source     string `json:"source"`
+	Device     string `json:"device"`
+	Value      string `json:"value"`
+	MealTime   string `json:"mealTime"`
+	Reason     string `json:"reason"`
+	Qty        Float  `json:"qty"`
+	Min        Float  `json:"Min"`
+	Avg        Float  `json:"Avg"`
+	Max        Float  `json:"Max"`
+	Systolic   Float  `json:"systolic"`
+	Diastolic  Float  `json:"diastolic"`
+	TotalSleep Float  `json:"totalSleep"`
+	Asleep     Float  `json:"asleep"`
+	Core       Float  `json:"core"`
+	Deep       Float  `json:"deep"`
+	REM        Float  `json:"REM"`
+	Awake      Float  `json:"awake"`
+	InBed      Float  `json:"inBed"`
+	SleepStart string `json:"sleepStart"`
+	SleepEnd   string `json:"sleepEnd"`
+	InBedStart string `json:"inBedStart"`
+	InBedEnd   string `json:"inBedEnd"`
 }
 
 // Workout 是一条运动记录（v2 结构）。
 type Workout struct {
-	Name          string      `json:"name"`
-	Start         string      `json:"start"`
-	End           string      `json:"end"`
-	Duration      Float       `json:"duration"`
-	Source        string      `json:"source"`
-	Device        string      `json:"device"`
-	TotalEnergy   Quantity    `json:"totalEnergy"`
-	TotalDistance Quantity    `json:"totalDistance"`
+	Name          string         `json:"name"`
+	Start         string         `json:"start"`
+	End           string         `json:"end"`
+	Duration      Float          `json:"duration"`
+	Source        string         `json:"source"`
+	Device        string         `json:"device"`
+	TotalEnergy   Quantity       `json:"totalEnergy"`
+	TotalDistance Quantity       `json:"totalDistance"`
 	Meta          map[string]any `json:"-"`
 }
 

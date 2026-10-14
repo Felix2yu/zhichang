@@ -76,10 +76,10 @@ func (d *Dashboard) summary(w http.ResponseWriter, r *http.Request) {
 	}
 	today := time.Now().In(d.loc).Format("2006-01-02")
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"date":      date,
-		"today":     today,
-		"timezone":  d.tzName,
-		"items":     items,
+		"date":     date,
+		"today":    today,
+		"timezone": d.tzName,
+		"items":    items,
 	})
 }
 

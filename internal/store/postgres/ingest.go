@@ -29,13 +29,13 @@ type RunMeta struct {
 
 // IngestStats 是一次摄入的统计结果。
 type IngestStats struct {
-	RunID       int64
-	Received    int
-	Inserted    int
-	Duplicates  int
-	Updated     int
-	Workouts    int
-	Sleep       int
+	RunID        int64
+	Received     int
+	Inserted     int
+	Duplicates   int
+	Updated      int
+	Workouts     int
+	Sleep        int
 	AffectedFrom string
 	AffectedTo   string
 	DuplicateRun bool

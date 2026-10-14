@@ -42,9 +42,9 @@ func (db *DB) LoadMetrics(ctx context.Context) (*metric.Registry, bool, error) {
 	var defs []metric.Def
 	for rows.Next() {
 		var (
-			d                                        metric.Def
+			d                                          metric.Def
 			kind, dayAgg, crossAgg, chart, unit, punit string
-			updated                                  time.Time
+			updated                                    time.Time
 		)
 		if err := rows.Scan(&d.Metric, &d.DisplayNameZH, &kind, &dayAgg, &crossAgg,
 			&unit, &punit, &d.ValueField, &chart, &d.Enabled, &d.SortOrder, &updated); err != nil {
