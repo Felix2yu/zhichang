@@ -66,6 +66,7 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 | 时区 | 记录自带偏移优先，`local_date` 由自带偏移推导（服务端时区不参与入库）；库内 `timestamptz` 全 UTC；无偏移时回落 `ZHICHANG_HOME_TZ` |
 | 日内聚合 | 步数/能量/距离等累计量 `sum()`；心率/体重/HRV 等瞬时量 `mean()`；身高、VO2max 取当日 `last` |
 | 分桶 | 一律按 `local_date`（不是服务端时区），跨时区旅行/夏令时都正确 |
+| 睡眠窗生理指标 | 夜间心率/HRV/血氧/呼吸频率按 `sleep_sessions` 的**入睡时间窗** `[sleep_start, sleep_end)` 关联样本，不按 `local_date`（样本按各自起始日归属，跨零点的后半夜会整段漏掉；取 `{睡眠日, 次日}` 两天只为走索引/裁 chunk）；**一晚只认一个来源**——会话来源优先，否则窗口内样本数最多，不跨来源平均（手表 5 分钟一条、手机低频，平均会被采样密度带偏）；无 `sleep_start` 时退到上床/离床，同晚有午睡与夜觉时取夜觉；「夜间最低」取窗口内 `value_min` 的最小，与 iPhone 睡眠详情页同口径 |
 
 天级聚合落在 `daily_metrics`（每来源）与 `daily_metrics_day`（收敛值）两张表，由摄入写入时按受影响的 `(日期, 指标)` 入队异步重算；服务重启后会继续消费未完成的队列。
 

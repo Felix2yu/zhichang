@@ -33,6 +33,7 @@ func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/samples", d.samples)
 	r.Get("/api/sleep", d.sleep)
 	r.Get("/api/sleep/stages", d.sleepStages)
+	r.Get("/api/sleep/night-metrics", d.sleepNightMetrics)
 	r.Get("/api/workouts", d.workouts)
 	r.Get("/api/sources", d.sources)
 	r.Get("/api/sync/status", d.syncStatus)
@@ -144,8 +145,9 @@ func (d *Dashboard) sleepStages(w http.ResponseWriter, r *http.Request) {
 		if latest == "" {
 			// 完全没有分期数据：返回零值而不是 404，前端据此显示占位提示。
 			WriteJSON(w, http.StatusOK, &postgres.SleepStages{
-				Segments: []postgres.SleepStageSeg{},
-				Totals:   map[string]float64{},
+				Segments:   []postgres.SleepStageSeg{},
+				Totals:     map[string]float64{},
+				Physiology: []postgres.NightSeries{},
 			})
 			return
 		}
@@ -157,6 +159,21 @@ func (d *Dashboard) sleepStages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, res)
+}
+
+// sleepNightMetrics 返回区间内每一晚「入睡时间窗」内的生理指标聚合（夜间心率等）。
+//
+// 关联口径与 awake_count、分期时间线一致：按入睡窗口取样本，不按 local_date。
+// 一晚一指标一行，只在窗口内确有样本时出现。
+func (d *Dashboard) sleepNightMetrics(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	from, to := d.defaultRange(q.Get("from"), q.Get("to"), 30)
+	rows, err := d.db.SleepNightMetrics(r.Context(), from, to, splitList(q.Get("metrics")))
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "rows": rows})
 }
 
 func (d *Dashboard) workouts(w http.ResponseWriter, r *http.Request) {

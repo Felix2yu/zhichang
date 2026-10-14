@@ -278,6 +278,10 @@ type SleepStages struct {
 	Segments    []SleepStageSeg `json:"segments"`
 	// Totals 是各阶段的合计小时数，键与 Segments[].Stage 一致。
 	Totals map[string]float64 `json:"totals"`
+	// Physiology 是同一晚入睡窗口内的生理指标逐点序列（夜间心率等），
+	// 与 Segments 共用「本夜分钟」时间轴，前端据此在时间线下方叠曲线。
+	// 白名单见 NightPhysiologyMetrics；本晚窗口内无样本时为空数组。
+	Physiology []NightSeries `json:"physiology"`
 }
 
 // normalizeSleepStage 把上游各版本的 stage 写法归一化。
@@ -326,11 +330,13 @@ func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error
 		LocalDate:   date,
 		Segments:    make([]SleepStageSeg, 0, 64),
 		Totals:      make(map[string]float64, 6),
+		Physiology:  make([]NightSeries, 0, 4),
 		TZOffsetMin: 0,
 	}
 
 	// 会话窗口：取时长最长的那条（信息最完整）。
 	var sessStart, sessEnd *time.Time
+	sessSrc := ""
 	sessRows, err := db.Pool.Query(ctx, `SELECT sleep_start, sleep_end, source, tz_offset_min
 		FROM sleep_sessions
 		WHERE local_date = $1 AND sleep_start IS NOT NULL AND sleep_end IS NOT NULL
@@ -348,6 +354,7 @@ func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error
 		stv, env := st.UTC(), en.UTC()
 		sessStart, sessEnd = &stv, &env
 		out.Source = src
+		sessSrc = src
 		out.HasSession = true
 	}
 	sessRows.Close()
@@ -469,6 +476,14 @@ func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error
 		out.Segments = append(out.Segments, c.SleepStageSeg)
 		out.Totals[c.Stage] += c.DurationMin / 60
 	}
+
+	// 同一把时间轴上再取夜间生理指标（夜间心率等）。
+	// 关联口径与分段一致：按入睡时间窗而非 local_date，跨零点的样本才捞得回来。
+	phy, err := db.nightPhysiology(ctx, []pgtype.Date{d, nd}, float64(winStart), float64(winEnd), sessSrc)
+	if err != nil {
+		return nil, err
+	}
+	out.Physiology = phy
 	return out, nil
 }
 
