@@ -169,6 +169,11 @@ CREATE TABLE metric_defs (
 | 特殊 | `blood_pressure`（systolic/diastolic） | instant | mean | mean |
 | 事件 | `workouts`、`ecg`、`heart_rate_notifications`、`state_of_mind`、`symptoms`、`medications`、`cycle_tracking` | 入专属表 | — | — |
 
+> 上面是立项时的指标清单。当前口径以 `internal/domain/metric/registry.go` 的 `Defaults()`
+> 为唯一事实来源（会 seed 进 `metric_defs`），完整清单与别名收敛规则见 README 的
+> 「关键处理规则」；新增指标时还要同步 `web/src/lib/metric-groups.ts`，
+> 否则趋势页的选择器里没有入口。
+
 ### 5.2 原始样本表（hypertable）
 
 ```sql

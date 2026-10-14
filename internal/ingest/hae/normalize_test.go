@@ -35,7 +35,7 @@ func TestNormalizeCountsAndFields(t *testing.T) {
 	}
 	res := Normalize(p, reg, home)
 
-	// step_count 4 + heart_rate 2 + body_mass 1 + 未知指标 1 = 8
+	// step_count 4 + heart_rate 2 + body_mass 1 + environmental_audio_exposure 1 = 8
 	if len(res.Samples) != 8 {
 		t.Fatalf("样本数应为 8，实际 %d", len(res.Samples))
 	}
@@ -45,8 +45,11 @@ func TestNormalizeCountsAndFields(t *testing.T) {
 	if len(res.Workouts) != 1 {
 		t.Fatalf("运动记录应为 1，实际 %d", len(res.Workouts))
 	}
-	if len(res.Unknown) != 1 || res.Unknown[0] != "environmental_audio_exposure" {
-		t.Fatalf("未知指标收集错误: %v", res.Unknown)
+	// 样例里已没有字典外的指标：环境音量原先未登记，现已进字典。
+	// 「未知指标被收集」这条口径由 normalize_edge_test.go 用构造出来的
+	// 假名字覆盖——用「当下恰好未登记」的真实指标来测，它被登记后就会静默失效。
+	if len(res.Unknown) != 0 {
+		t.Fatalf("样例里不该还有未登记指标: %v", res.Unknown)
 	}
 
 	byMetric := map[string][]float64{}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/Felix2yu/zhichang/migrations"
 )
 
 // migrate_test.go 锁 Migrate / execScript 的口径：迁移是「按序、单事务、可重入」的，
@@ -156,7 +158,7 @@ func TestMigrateFailureKeepsErrorContext(t *testing.T) {
 // 本机是否装了 timescaledb 决定 0001 的第一句能不能过，两种情况都要有明确断言：
 //   - 没装（测试库的常态）：必须报「执行迁移 0001_init.sql 失败」并带上版本号，
 //     applied 保持为空，且该 schema 里什么都不留下（脚本级回滚），下次重试仍从 0001 开始；
-//   - 装了：整个 schema 必须被干净地建出来，applied 报出全部三份脚本。
+//   - 装了：整个 schema 必须被干净地建出来，applied 报出全部脚本。
 func TestMigrateStopsAtFirstFailingScript(t *testing.T) {
 	provision := openRollupDB(t)
 	ctx := context.Background()
@@ -199,7 +201,11 @@ func TestMigrateStopsAtFirstFailingScript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("可用扩展下 Migrate 失败: %v", err)
 	}
-	if len(applied) != 3 {
-		t.Fatalf("三份迁移都应被应用，实际 %v", applied)
+	want, err := migrations.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(applied) != len(want) {
+		t.Fatalf("全部 %d 份迁移都应被应用，实际 %d 份: %v", len(want), len(applied), applied)
 	}
 }

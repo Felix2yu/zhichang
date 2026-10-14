@@ -287,8 +287,10 @@ func TestIngestHappyPath(t *testing.T) {
 	if got.Affected.From != "2026-10-13" || got.Affected.To != "2026-10-13" {
 		t.Fatalf("affected 区间应为样例的 2026-10-13，实际 %q~%q", got.Affected.From, got.Affected.To)
 	}
-	if len(got.UnknownMetrics) != 1 || got.UnknownMetrics[0] != "environmental_audio_exposure" {
-		t.Fatalf("unknown_metrics 应透传给客户端，实际 %v", got.UnknownMetrics)
+	// 样例里已没有字典外的指标（环境音量已登记进字典），
+	// 「未知指标透传」这条口径改由 TestUnknownMetricStillIngested 用假名字覆盖。
+	if len(got.UnknownMetrics) != 0 {
+		t.Fatalf("样例里不该还有未登记指标，实际 %v", got.UnknownMetrics)
 	}
 
 	// 落库与审计必须和响应一致：这是端点唯一可被外部验证的地方。
@@ -797,19 +799,25 @@ func TestIngestFailureIs500AndRecorded(t *testing.T) {
 
 // TestUnknownMetricStillIngested：未知指标会透传给客户端，但仍然落库
 // （字典只约束聚合口径，不该静默丢数据）。
+//
+// 指标名刻意用构造出来的假名：拿「当下恰好未登记」的真实指标来测，
+// 那个指标一旦被登记进字典，这条测试就静默地不再测任何东西
+// （environmental_audio_exposure 就经历了这个过程）。
 func TestUnknownMetricStillIngested(t *testing.T) {
 	e := newEnv(t)
 	h := New(e.svc, testToken, 0, "")
-	rec := do(t, h, readRealPayload(t), header("session-id", "unknown-metrics"))
+	body := `{"data":{"metrics":[{"name":"zzz_probe_unregistered","units":"count","data":[
+		{"date":"2026-10-13 08:00:00 +0800","qty":7,"source":"iPhone"}]}]}}`
+	rec := do(t, h, []byte(body), header("session-id", "unknown-metrics"))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("应 200，实际 %d body=%s", rec.Code, rec.Body.String())
 	}
 	got := decode(t, rec)
-	if len(got.UnknownMetrics) == 0 {
-		t.Fatal("未知指标必须回传")
+	if len(got.UnknownMetrics) != 1 || got.UnknownMetrics[0] != "zzz_probe_unregistered" {
+		t.Fatalf("未知指标必须回传，实际 %v", got.UnknownMetrics)
 	}
 	var n int
-	if err := e.db.Pool.QueryRow(e.ctx, `SELECT count(*) FROM samples WHERE metric='environmental_audio_exposure'`).Scan(&n); err != nil {
+	if err := e.db.Pool.QueryRow(e.ctx, `SELECT count(*) FROM samples WHERE metric='zzz_probe_unregistered'`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 1 {

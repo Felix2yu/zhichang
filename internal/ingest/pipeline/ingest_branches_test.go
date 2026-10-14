@@ -748,17 +748,19 @@ func TestIngestStatsShape(t *testing.T) {
 	if out.Skipped != 0 {
 		t.Fatalf("干净数据不该有 skipped，实际 %d", out.Skipped)
 	}
-	if len(out.UnknownMetrics) != 1 || out.UnknownMetrics[0] != "environmental_audio_exposure" {
-		t.Fatalf("未知指标应只有环境声一项，实际 %v", out.UnknownMetrics)
+	// 样例里已没有字典外的指标（环境音量已登记）。「未知指标照常入库」这条口径
+	// 改由 TestIngestKeepsUnregisteredMetric 用构造出来的假名字覆盖。
+	if len(out.UnknownMetrics) != 0 {
+		t.Fatalf("样例里不该还有未登记指标，实际 %v", out.UnknownMetrics)
 	}
-	// 未知指标也要入库：字典只约束聚合口径，不该静默丢数据。
+	// 字典外的指标不参与天级聚合，但绝不能被静默丢掉；这里顺带确认它在库里。
 	var n int
 	if err := db.Pool.QueryRow(ctx,
 		`SELECT count(*) FROM samples WHERE metric = 'environmental_audio_exposure'`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 1 {
-		t.Fatalf("未知指标也应入库，实际 %d 条", n)
+		t.Fatalf("environmental_audio_exposure 应入库，实际 %d 条", n)
 	}
 
 	// 脏数据：缺 qty 的点与解析不了时间的点都进 skipped，一条都不落库。
@@ -787,6 +789,47 @@ func TestIngestStatsShape(t *testing.T) {
 	}
 	if status != "ok" {
 		t.Fatalf("脏数据不是失败，run 状态应为 ok，实际 %q", status)
+	}
+}
+
+// TestIngestKeepsUnregisteredMetric：字典外的指标照常入库并回传，
+// 只是不参与天级聚合（字典只约束聚合口径，不该静默丢数据）。
+//
+// 指标名刻意用构造出来的假名，而不是「当下恰好未登记」的真实指标：
+// 后者一旦被登记进字典，这条测试就会静默地不再测任何东西
+// （environmental_audio_exposure 就经历过这个过程）。
+func TestIngestKeepsUnregisteredMetric(t *testing.T) {
+	db, svc := service(t, "strict")
+	ctx := context.Background()
+
+	out, err := svc.Ingest(ctx,
+		mustParse(t, onePoint("zzz_probe_unregistered", "2026-10-13 08:00:00 +0800", 7, "iPhone")),
+		postgres.RunMeta{Transport: "rest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.UnknownMetrics) != 1 || out.UnknownMetrics[0] != "zzz_probe_unregistered" {
+		t.Fatalf("未登记指标必须回传，实际 %v", out.UnknownMetrics)
+	}
+	if out.Inserted != 1 {
+		t.Fatalf("未登记指标也要入库，实际 inserted=%d", out.Inserted)
+	}
+	var n int
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM samples WHERE metric = 'zzz_probe_unregistered'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("未登记指标应落 samples，实际 %d 条", n)
+	}
+	// 也要进重算队列：聚合侧对未登记指标用 sum 兜底口径，
+	// 不排进队列的话它永远只有原始样本、界面上拿不到天级值。
+	if err := db.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM rollup_queue WHERE metric = 'zzz_probe_unregistered'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("未登记指标也要排进聚合队列，实际 %d 条", n)
 	}
 }
 
