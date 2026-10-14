@@ -31,3 +31,11 @@ ZHICHANG_TEST_DSN=<同上> go test ./...   # 启用集成测试
 - 容器内 `proxy.golang.org` 不可达，Dockerfile 需 `ENV GOPROXY=https://goproxy.cn,direct`。
 - pgx：`pgxpool.Conn` 没有 `PgConn()`，要 `c.Conn().PgConn()`；date 列扫描用 `pgtype.Date`（`*string` 不行）。
 - MCP stdio 冒烟测试要 `(printf ...; sleep 4) | binary`，管道立即 EOF 会拿不到响应。
+- **JSON 契约（硬约定）**：store 层任何返回 slice 的方法必须 `make([]T, 0, N)` 初始化，
+  绝不写 `var out []T`——nil slice 会被 encoding/json 编成 `null`，前端拿到后
+  `.map()` / 展开 / `.at()` 直接抛 TypeError，SvelteKit 错误边界接管后整页显示 500，
+  而容器日志一片干净，极易误判为服务端问题。空结果集必须编成 `[]`。
+  前端侧 `web/src/lib/api.ts` 的 `arr<T>()` 做第二层兜底，新增 api.* 方法时记得套上。
+  回归由 internal/store/postgres/json_contract_test.go 锁定。
+- 本机没有 docker CLI（`docker: command not found`，沙箱内外均是），起不了临时库做端到端验证；
+  验证数据库相关行为只能靠 ZHICHANG_TEST_DSN 或契约测试。
