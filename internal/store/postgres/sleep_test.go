@@ -272,8 +272,8 @@ func TestSleepStagesTimeline(t *testing.T) {
 	if got.Source != "Apple Watch" {
 		t.Fatalf("来源择优错误：期望 Apple Watch，实际 %q", got.Source)
 	}
-	if len(got.Segments) != 6 {
-		t.Fatalf("期望 6 段（排除窗口外的 20:00 那段），实际 %d", len(got.Segments))
+	if len(got.Segments) != 5 {
+		t.Fatalf("期望 5 段（7 条里排除窗口外的次日晚 REM、以及非择优来源的 iPhone），实际 %d", len(got.Segments))
 	}
 
 	// 凌晨 03:00 的深睡应落在 1620（03:00 + 1440）
@@ -297,9 +297,19 @@ func TestSleepStagesTimeline(t *testing.T) {
 	if len(got.Segments) == 0 {
 		t.Fatal("分段为空")
 	}
-	first := got.Segments[0]
-	if first.Stage != "core" {
-		t.Fatalf("AsleepCore 应归一化为 core，实际 %q", first.Stage)
+	// 段按 start_time 排序，最早的是 23:10 的在床段；归一化取第一条 core 来验
+	if got.Segments[0].Stage != "inbed" {
+		t.Fatalf("最早一段应是 23:10 的在床，实际 %q", got.Segments[0].Stage)
+	}
+	var coreStage string
+	for _, s := range got.Segments {
+		if s.Raw == "AsleepCore" {
+			coreStage = s.Stage
+			break
+		}
+	}
+	if coreStage != "core" {
+		t.Fatalf("AsleepCore 应归一化为 core，实际 %q", coreStage)
 	}
 	if v := got.Totals["core"]; v < 0.99 || v > 1.01 {
 		t.Fatalf("core 合计应为 1h，实际 %v", v)
