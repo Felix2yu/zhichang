@@ -84,6 +84,50 @@ export type SleepStages = {
 	segments: SleepStageSeg[];
 	/** 各阶段合计小时数 */
 	totals: Record<string, number>;
+	/** 同一晚入睡窗口内的生理指标逐点序列（夜间心率等），与 segments 共用本夜时间轴 */
+	physiology: NightSeries[];
+};
+
+/** 单夜时间轴上的一个采样点（local_min 与 SleepStageSeg 同一把尺子） */
+export type NightPoint = {
+	local_min: number;
+	value: number;
+	min?: number;
+	max?: number;
+};
+
+/** 某晚入睡窗口内一个生理指标的序列 */
+export type NightSeries = {
+	metric: string;
+	unit: string;
+	source: string;
+	avg: number;
+	min: number;
+	max: number;
+	/** 最低值在本夜轴上的位置（分钟），用于标出「最低出现在几点」 */
+	min_local_min: number;
+	sample_count: number;
+	points: NightPoint[];
+};
+
+/** 某晚入睡窗口内一个生理指标的聚合（/api/sleep/night-metrics 的一行） */
+export type NightMetricRow = {
+	/** 睡眠日（入睡时刻的本地日期），与 SleepRow.local_date 同口径 */
+	local_date: string;
+	metric: string;
+	source: string;
+	avg: number;
+	/** 窗口内最低值：心率取每段 value_min 的最小，即 Apple 的「夜间最低心率」 */
+	min: number;
+	max: number;
+	sample_count: number;
+	/** 最低值出现时刻（UTC RFC3339） */
+	min_at?: string;
+	window_start: string;
+	window_end: string;
+	/** 窗口时长（分钟） */
+	window_min: number;
+	unit: string;
 };
 
 export type WorkoutRow = {
@@ -170,7 +214,12 @@ export const api = {
 	sleepStages: async (date?: string) => {
 		const q = date ? `?date=${date}` : '';
 		const r = await get<SleepStages>(`/api/sleep/stages${q}`);
-		return { ...r, segments: arr(r.segments), totals: r.totals ?? {} };
+		return { ...r, segments: arr(r.segments), totals: r.totals ?? {}, physiology: arr(r.physiology) };
+	},
+	sleepNightMetrics: async (from: string, to: string, metrics?: string[]) => {
+		const q = metrics?.length ? `&metrics=${encodeURIComponent(metrics.join(','))}` : '';
+		const r = await get<{ rows: NightMetricRow[] }>(`/api/sleep/night-metrics?from=${from}&to=${to}${q}`);
+		return { ...r, rows: arr(r.rows) };
 	},
 	workouts: async (from: string, to: string) => {
 		const r = await get<{ rows: WorkoutRow[] }>(`/api/workouts?from=${from}&to=${to}`);
