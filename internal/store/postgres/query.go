@@ -100,7 +100,9 @@ func (db *DB) Summary(ctx context.Context, date string, defs map[string]struct{}
 		}
 	}
 	if rows.Err() != nil {
-		return nil, err
+		// 这里必须返回 rows.Err()：err 此时是上面 Query 的 nil，
+		// 跟着返回会把「游标中途出错」伪装成「今天没有数据」。
+		return nil, rows.Err()
 	}
 
 	out := make([]SummaryItem, 0, len(cur))
@@ -822,10 +824,15 @@ type WatermarkRow struct {
 func (db *DB) SyncStatusOf(ctx context.Context, days int) (SyncStatus, error) {
 	// 三个 slice 字段必须初始化：nil slice 会被编码成 JSON null，
 	// 前端拿到 null 后展开/取下标会直接抛错。
+	// days 来自查询参数，负数会让 make 的容量越界直接 panic 整个请求，先夹住。
+	capacity := days
+	if capacity < 0 {
+		capacity = 0
+	}
 	st := SyncStatus{
 		RecentRuns:  make([]RunBrief, 0, 10),
 		Watermarks:  make([]WatermarkRow, 0, 16),
-		MissingDays: make([]string, 0, days),
+		MissingDays: make([]string, 0, capacity),
 	}
 	rows, err := db.Pool.Query(ctx, `SELECT id, transport, COALESCE(automation_id,''), COALESCE(session_id,''), received_at,
 		sample_count, inserted, duplicates, status, error
