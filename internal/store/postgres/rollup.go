@@ -159,20 +159,32 @@ func (r *Rollup) Recompute(ctx context.Context, dates []string, metrics []string
 }
 
 // recomputeLast 处理“取当日最后一次测量”的指标（身高、VO2max 等）。
+//
+// 来源清单与来源数必须去重，但不能用 array_agg(DISTINCT ...) OVER (...)：
+// PostgreSQL 明确不支持窗口函数里的 DISTINCT（SQLSTATE 0A000），
+// 那样写会让整条语句在任何库上都直接失败。改成先按 (日期 × 指标) 聚合出
+// 去重来源，再与「最后一次」那一行拼起来，口径与逐样本算完全一致。
 func (r *Rollup) recomputeLast(ctx context.Context, d []pgtype.Date, ms []string) error {
 	if _, err := r.db.Pool.Exec(ctx, `DELETE FROM daily_metrics_day WHERE local_date = ANY($1) AND metric = ANY($2)`, d, ms); err != nil {
 		return err
 	}
 	const q = `INSERT INTO daily_metrics_day (local_date, metric, value, sample_count, source_count, sources)
-		SELECT t.local_date, t.metric, t.value, t.cnt, t.src_cnt, t.sources FROM (
+		SELECT t.local_date, t.metric, t.value, t.cnt, sc.src_cnt, sc.sources FROM (
 			SELECT s.local_date, s.metric, s.value,
 				count(*) OVER (PARTITION BY s.local_date, s.metric) AS cnt,
-				count(DISTINCT s.source) OVER (PARTITION BY s.local_date, s.metric) AS src_cnt,
-				array_agg(DISTINCT s.source) OVER (PARTITION BY s.local_date, s.metric) AS sources,
 				row_number() OVER (PARTITION BY s.local_date, s.metric ORDER BY s.start_time DESC, s.source) AS rn
 			FROM samples s
 			WHERE s.local_date = ANY($1) AND s.metric = ANY($2)
-		) t WHERE t.rn = 1`
+		) t
+		JOIN (
+			SELECT s.local_date, s.metric,
+				count(DISTINCT s.source) AS src_cnt,
+				array_agg(DISTINCT s.source ORDER BY s.source) AS sources
+			FROM samples s
+			WHERE s.local_date = ANY($1) AND s.metric = ANY($2)
+			GROUP BY s.local_date, s.metric
+		) sc ON sc.local_date = t.local_date AND sc.metric = t.metric
+		WHERE t.rn = 1`
 	_, err := r.db.Pool.Exec(ctx, q, d, ms)
 	return err
 }
