@@ -97,21 +97,53 @@ async function get<T>(path: string, init?: RequestInit): Promise<T> {
 	return (await res.json()) as T;
 }
 
+// Go 侧 nil slice 会被编码成 JSON null（历史响应与网关重写都可能带来 null）。
+// 页面里到处直接 .map / 展开 / .at()，一处 null 就整页崩成错误页，
+// 所以在数据入口统一兜底成空数组。
+function arr<T>(v: T[] | null | undefined): T[] {
+	return Array.isArray(v) ? v : [];
+}
+
 export const api = {
-	metrics: () => get<{ timezone: string; metrics: MetricDef[] }>('/api/metrics'),
-	summary: (date?: string) =>
-		get<{ date: string; today: string; items: SummaryItem[] }>(
+	metrics: async () => {
+		const r = await get<{ timezone: string; metrics: MetricDef[] }>('/api/metrics');
+		return { ...r, metrics: arr(r.metrics) };
+	},
+	summary: async (date?: string) => {
+		const r = await get<{ date: string; today: string; items: SummaryItem[] }>(
 			`/api/summary${date ? `?date=${date}` : ''}`
-		),
-	daily: (metrics: string[], from: string, to: string) =>
-		get<{ from: string; to: string; series: Record<string, DailyPoint[]> }>(
+		);
+		return { ...r, items: arr(r.items) };
+	},
+	daily: async (metrics: string[], from: string, to: string) => {
+		const r = await get<{ from: string; to: string; series: Record<string, DailyPoint[]> }>(
 			`/api/daily?metrics=${encodeURIComponent(metrics.join(','))}&from=${from}&to=${to}`
-		),
-	sleep: (from: string, to: string) => get<{ rows: SleepRow[] }>(`/api/sleep?from=${from}&to=${to}`),
-	workouts: (from: string, to: string) =>
-		get<{ rows: WorkoutRow[] }>(`/api/workouts?from=${from}&to=${to}`),
-	sources: () => get<{ sources: SourceRow[] }>('/api/sources'),
-	syncStatus: (days = 30) => get<SyncStatus>(`/api/sync/status?days=${days}`)
+		);
+		const series: Record<string, DailyPoint[]> = {};
+		for (const [k, v] of Object.entries(r.series ?? {})) series[k] = arr(v);
+		return { ...r, series };
+	},
+	sleep: async (from: string, to: string) => {
+		const r = await get<{ rows: SleepRow[] }>(`/api/sleep?from=${from}&to=${to}`);
+		return { ...r, rows: arr(r.rows) };
+	},
+	workouts: async (from: string, to: string) => {
+		const r = await get<{ rows: WorkoutRow[] }>(`/api/workouts?from=${from}&to=${to}`);
+		return { ...r, rows: arr(r.rows) };
+	},
+	sources: async () => {
+		const r = await get<{ sources: SourceRow[] }>('/api/sources');
+		return { ...r, sources: arr(r.sources) };
+	},
+	syncStatus: async (days = 30) => {
+		const r = await get<SyncStatus>(`/api/sync/status?days=${days}`);
+		return {
+			...r,
+			recent_runs: arr(r.recent_runs),
+			watermarks: arr(r.watermarks),
+			missing_days: arr(r.missing_days)
+		};
+	}
 };
 
 export function formatValue(v: number | null | undefined, unit?: string, digits = 0): string {
