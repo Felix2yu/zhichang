@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, shiftDays, todayStr, type SleepRow, type SleepStages } from '#lib/api';
+	import {
+		api,
+		shiftDays,
+		todayStr,
+		type NightMetricRow,
+		type SleepRow,
+		type SleepStages
+	} from '#lib/api';
 	import {
 		COMPONENT_MAX,
 		bandOf,
@@ -10,6 +17,15 @@
 		type SleepScore
 	} from '#lib/sleep-score';
 	import { STAGE_META, stageMeta } from '#lib/sleep-stages';
+	import {
+		DEFAULT_NIGHT_METRIC,
+		availableNightMetrics,
+		indexNightMetrics,
+		nightKey,
+		nightMeta,
+		nightMinClock,
+		seriesFor
+	} from '#lib/sleep-night-metrics';
 	import {
 		computeRhythm,
 		coverageStats,
@@ -37,6 +53,43 @@
 
 	let nights = $derived(collapseNights(allRows));
 	let scores = $derived(computeSleepScores(nights).filter((s) => s.local_date >= from));
+
+	// —— 夜间生理指标（按入睡时间窗关联，非 local_date）——
+	let nightRows = $state<NightMetricRow[]>([]);
+	let nightIdx = $derived(indexNightMetrics(nightRows));
+	/** 每晚一行的心率聚合；没有样本的夜晚是 undefined */
+	let nightHr = $derived(rows.map((r) => nightIdx.get(nightKey(DEFAULT_NIGHT_METRIC, r.local_date))));
+	let hasNightHr = $derived(nightHr.some((r): r is NightMetricRow => r !== undefined));
+	/** 最近一晚有夜间心率的记录 */
+	let latestNightHr = $derived.by(() => {
+		for (let i = nightHr.length - 1; i >= 0; i--) {
+			const r = nightHr[i];
+			if (r) return { date: rows[i].local_date, row: r, tz: rows[i].tz_offset_min };
+		}
+		return null;
+	});
+	let nightHrSeries = $derived([
+		{
+			name: '夜间最低',
+			color: '#993556',
+			unit: 'bpm',
+			digits: 0,
+			points: rows
+				.map((r, i) => ({ date: r.local_date, row: nightHr[i] }))
+				.filter((p): p is { date: string; row: NightMetricRow } => !!p.row)
+				.map((p) => ({ date: p.date, value: p.row.min }))
+		},
+		{
+			name: '夜间平均',
+			color: '#5a6b8c',
+			unit: 'bpm',
+			digits: 0,
+			points: rows
+				.map((r, i) => ({ date: r.local_date, row: nightHr[i] }))
+				.filter((p): p is { date: string; row: NightMetricRow } => !!p.row)
+				.map((p) => ({ date: p.date, value: p.row.avg }))
+		}
+	]);
 	/** 有分数的夜晚（范围最前面几天可能因历史不足没有分数） */
 	let scored = $derived(scores.filter((s): s is SleepScore & { score: number } => s.score !== null));
 	let latest = $derived(scored.length ? scored[scored.length - 1] : null);
@@ -119,11 +172,13 @@
 	// —— 睡眠分期时间线（hypnogram）——
 	// 聚合图只能说「这一晚深睡 1.5 小时」，时间线才看得出「深睡都堆在前半夜」、
 	// 「后半夜 REM 变密」这类结构信息。
-	let stages = $state<SleepStages>({ segments: [], totals: {} });
+	let stages = $state<SleepStages>({ segments: [], totals: {}, physiology: [] });
 	let stageLoading = $state(true);
 	let stageError = $state('');
 	/** 当前查看的睡眠日；留空表示由后端挑最近一晚有分期的日期 */
 	let stageDate = $state('');
+	/** 时间线下方叠加哪个夜间指标（只有一项时不出现切换条） */
+	let phyMetric = $state(DEFAULT_NIGHT_METRIC);
 
 	/** 可选夜晚：范围内有记录的睡眠日，倒序（新的在前） */
 	let nightChoices = $derived([...rows].reverse().map((r) => r.local_date));
@@ -148,6 +203,14 @@
 		}))
 	);
 	let stageTotalHr = $derived(stageLegend.reduce((a, s) => a + s.hours, 0));
+
+	/** 这一晚真实有数据的夜间指标（决定要不要出切换条） */
+	let phyOptions = $derived(availableNightMetrics(stages.physiology));
+	/** 当前叠加项：选中的没了数据就退回第一个有数据的 */
+	let phyActive = $derived(
+		phyOptions.includes(phyMetric) ? phyMetric : (phyOptions[0] ?? DEFAULT_NIGHT_METRIC)
+	);
+	let phyOverlay = $derived(seriesFor(stages.physiology, phyActive));
 
 	async function loadStages(date: string) {
 		stageLoading = true;
@@ -255,7 +318,13 @@
 		try {
 			const to = todayStr();
 			// 多取一段前置窗口：评分基准要用到当前范围之前的历史
-			allRows = (await api.sleep(shiftDays(-(days + LEAD_IN_DAYS), to), to)).rows;
+			// 夜间指标只要展示范围，不需要前置基准，与图表同一区间才对得齐
+			const [sl, nm] = await Promise.all([
+				api.sleep(shiftDays(-(days + LEAD_IN_DAYS), to), to),
+				api.sleepNightMetrics(from, to)
+			]);
+			allRows = sl.rows;
+			nightRows = nm.rows;
 			error = '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -388,6 +457,51 @@
 		{/if}
 	</div>
 
+	<!-- 夜间心率：睡眠内部指标之外的生理交叉验证。窗口内没样本就整卡不渲染 -->
+	{#if hasNightHr && latestNightHr}
+		{@const meta = nightMeta(DEFAULT_NIGHT_METRIC)}
+		<div class="card p-4">
+			<div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+				<span class="text-[13px] font-medium">{meta.label}</span>
+				<span class="text-[10px] text-[var(--color-ink-500)]/80">
+					{latestNightHr.date} · 来源 {latestNightHr.row.source} · {latestNightHr.row.sample_count} 点
+				</span>
+			</div>
+			<div class="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+				<span class="flex items-baseline gap-1.5">
+					<span class="num text-[28px] leading-none font-medium" style="color:{meta.color}">
+						{Math.round(latestNightHr.row.min)}
+					</span>
+					<span class="text-[11px] text-[var(--color-ink-500)]">{meta.unit} 最低</span>
+					{#if nightMinClock(latestNightHr.row, latestNightHr.tz)}
+						<span class="text-[11px] text-[var(--color-ink-500)]">
+							· {nightMinClock(latestNightHr.row, latestNightHr.tz)} 出现
+						</span>
+					{/if}
+				</span>
+				<span class="flex items-baseline gap-1.5">
+					<span class="num text-[20px] leading-none font-medium">
+						{Math.round(latestNightHr.row.avg)}
+					</span>
+					<span class="text-[11px] text-[var(--color-ink-500)]">{meta.unit} 平均</span>
+				</span>
+				<span class="flex items-baseline gap-1.5">
+					<span class="num text-[20px] leading-none font-medium">
+						{Math.round(latestNightHr.row.min)}–{Math.round(latestNightHr.row.max)}
+					</span>
+					<span class="text-[11px] text-[var(--color-ink-500)]">区间</span>
+				</span>
+			</div>
+			<div class="mt-2">
+				<TrendChart series={nightHrSeries} height={200} yUnit={meta.unit} />
+			</div>
+			<div class="mt-1 text-[10px] leading-relaxed text-[var(--color-ink-500)]/80">
+				取入睡到起床窗口内的心率样本（跨零点的后半夜也算这一晚，不按记录日期）；
+				「最低」是窗口内各段最小值里的最小，与 iPhone 睡眠详情页同口径，跟白天的静息心率不是一回事。
+			</div>
+		</div>
+	{/if}
+
 	<!-- 周期性节律：工作日 vs 周末，睡眠结构：效率与各阶段占比 -->
 	<div class="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
 		<div class="card p-4">
@@ -511,11 +625,31 @@
 				</div>
 			</div>
 		{:else}
+			{#if phyOptions.length > 1}
+				<div class="mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+					<span class="text-[11px] text-[var(--color-ink-500)]">叠加</span>
+					{#each phyOptions as m (m)}
+						<button
+							class="rounded border px-2 py-0.5 text-[11px]"
+							class:border-[var(--color-line)]={m !== phyActive}
+							class:border-[#9aa0a6]={m === phyActive}
+							class:bg-[#fafbfc]={m === phyActive}
+							class:text-[var(--color-ink-700)]={m !== phyActive}
+							class:font-medium={m === phyActive}
+							onclick={() => (phyMetric = m)}>{nightMeta(m).label}</button
+						>
+					{/each}
+				</div>
+			{/if}
 			<SleepTimeline
 				segments={stages.segments}
 				winStart={winBounds.lo}
 				winEnd={winBounds.hi}
-				height={240}
+				height={phyOverlay ? 312 : 240}
+				overlay={phyOverlay}
+				overlayLabel={phyOverlay
+					? `${nightMeta(phyOverlay.metric).label} ${nightMeta(phyOverlay.metric).unit}`
+					: ''}
 			/>
 			<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--color-ink-500)]">
 				{#each stageLegend as s (s.key)}
@@ -524,6 +658,16 @@
 						{s.label} <span class="num">{fmtDur(s.hours * 60)}</span>
 					</span>
 				{/each}
+				{#if phyOverlay}
+					{@const m = nightMeta(phyOverlay.metric)}
+					<span class="inline-flex items-center gap-1.5">
+						<span class="inline-block h-2 w-2 rounded-full" style="background:#993556"></span>
+						{m.label}
+						<span class="num">
+							{Math.round(phyOverlay.min)}–{Math.round(phyOverlay.max)} {m.unit}
+						</span>
+					</span>
+				{/if}
 				<span class="ml-auto">
 					分期合计 <span class="num">{stageTotalHr.toFixed(1)} h</span>
 					{#if stages.source}· 来源 {stages.source}{/if}
@@ -550,7 +694,7 @@
 
 	<div class="card overflow-hidden">
 		<div class="overflow-x-auto">
-			<table class="w-full min-w-[620px] text-[13px]">
+			<table class="w-full text-[13px] {hasNightHr ? 'min-w-[700px]' : 'min-w-[620px]'}">
 				<thead class="bg-[#fafbfc] text-[12px] text-[var(--color-ink-500)]">
 					<tr>
 						<th class="px-4 py-2 text-left font-normal">日期</th>
@@ -560,6 +704,9 @@
 						<th class="px-4 py-2 text-right font-normal">REM</th>
 						<th class="px-4 py-2 text-right font-normal">清醒</th>
 						<th class="px-4 py-2 text-right font-normal">在床</th>
+						{#if hasNightHr}
+							<th class="px-4 py-2 text-right font-normal">夜间最低 (bpm)</th>
+						{/if}
 						<th class="px-4 py-2 text-left font-normal">来源</th>
 					</tr>
 				</thead>
@@ -573,6 +720,10 @@
 							<td class="num px-4 py-2 text-right">{(r.rem_hr ?? 0).toFixed(1)}</td>
 							<td class="num px-4 py-2 text-right">{cell(r.awake_hr)}</td>
 							<td class="num px-4 py-2 text-right">{(r.in_bed_hr ?? 0).toFixed(1)}</td>
+							{#if hasNightHr}
+								{@const hr = nightIdx.get(nightKey(DEFAULT_NIGHT_METRIC, r.local_date))}
+								<td class="num px-4 py-2 text-right">{hr ? Math.round(hr.min) : '—'}</td>
+							{/if}
 							<td class="px-4 py-2">{r.source}</td>
 						</tr>
 					{/each}
