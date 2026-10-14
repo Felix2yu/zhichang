@@ -9,8 +9,10 @@ import (
 	"github.com/Felix2yu/zhichang/internal/domain/metric"
 )
 
-// 本文件锁心电的归一化口径。本版只落元数据（一行一次测量），不解析波形。
-// 最容易出错的是判定文本：它是**本地化**的，必须走 ecg.Classify 而不是按整串比。
+// 本文件锁心电的归一化口径。三件事最容易出错，各有一组用例：
+//   1. 判定文本是**本地化**的，必须走 ecg.Classify 而不是按整串比；
+//   2. 时轴按「第 i 点 = start + i/fs」推，所以点数不完整时不能存波形；
+//   3. 电压单位原样保留，不做任何换算。
 
 func ecgPayload(body string) string {
 	return `{"data":{"ecg":[` + body + `]}}`
@@ -44,9 +46,14 @@ func TestNormalizeECGRecord(t *testing.T) {
 	if r.SamplingFrequency == nil || *r.SamplingFrequency != 512 {
 		t.Fatalf("采样率错误: %v", r.SamplingFrequency)
 	}
-	// 点数取上游声明的 numberOfVoltageMeasurements
-	if r.VoltageCount != 3 {
-		t.Fatalf("波形点数应取上游声明值 3，实际 %d", r.VoltageCount)
+	if r.VoltageUnit != "mcV" {
+		t.Fatalf("单位必须原样保留 mcV（不做 mcV→µV 的换算），实际 %q", r.VoltageUnit)
+	}
+	if len(r.Voltages) != 3 || r.VoltageCount != 3 {
+		t.Fatalf("波形点数错误: %d / %d", len(r.Voltages), r.VoltageCount)
+	}
+	if r.Voltages[0] != -27.4 || r.Voltages[1] != 0 || r.Voltages[2] != 43.875 {
+		t.Fatalf("电压值错误: %v", r.Voltages)
 	}
 	// 时间与 local_date 由记录自带偏移推导：+0800 的 23:16 属于 10-13
 	if got := r.StartTime.UTC().Format(time.RFC3339); got != "2026-10-13T15:16:15Z" {
@@ -80,7 +87,7 @@ func TestNormalizeECGClassificationIsLocalized(t *testing.T) {
 	for _, tt := range tests {
 		raw := ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","end":"2026-10-13 23:16:45 +0800",` +
 			`"classification":` + `"` + tt.raw + `",` +
-			`"averageHeartRate":70,"samplingFrequency":512,"source":"Apple Watch"}`)
+			`"averageHeartRate":70,"samplingFrequency":512,"source":"Apple Watch","voltageMeasurements":[]}`)
 		res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC, raw)
 		if len(res.ECG) != 1 {
 			t.Fatalf("%q：应归一 1 条记录，实际 %d", tt.raw, len(res.ECG))
@@ -100,7 +107,7 @@ func TestNormalizeECGClassificationIsLocalized(t *testing.T) {
 func TestNormalizeECGUnknownClassificationStillStored(t *testing.T) {
 	res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
 		ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","classification":"室性早搏",`+
-			`"source":"Apple Watch"}`))
+			`"source":"Apple Watch","voltageMeasurements":[]}`))
 	if len(res.ECG) != 1 {
 		t.Fatalf("认不出判定也要入库，实际 %d 条", len(res.ECG))
 	}
@@ -116,7 +123,7 @@ func TestNormalizeECGUnknownClassificationStillStored(t *testing.T) {
 func TestNormalizeECGEndFallsBackToStart(t *testing.T) {
 	res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
 		ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","classification":"窦性心律",`+
-			`"source":"Apple Watch"}`))
+			`"source":"Apple Watch","voltageMeasurements":[]}`))
 	if len(res.ECG) != 1 {
 		t.Fatalf("应归一 1 条，实际 %d", len(res.ECG))
 	}
@@ -129,22 +136,46 @@ func TestNormalizeECGEndFallsBackToStart(t *testing.T) {
 // 时间不可解析的记录只能丢弃（没有时刻就没法定位），且必须计入 skipped。
 func TestNormalizeECGSkipsUnparsableTime(t *testing.T) {
 	res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
-		ecgPayload(`{"start":"","classification":"窦性心律","source":"Apple Watch"}`))
+		ecgPayload(`{"start":"","classification":"窦性心律","source":"Apple Watch","voltageMeasurements":[]}`))
 	if len(res.ECG) != 0 || res.Skipped != 1 {
 		t.Fatalf("应跳过 1 条，实际 ecg=%d skipped=%d", len(res.ECG), res.Skipped)
 	}
 }
 
-// 上游本就没给波形（该自动化没勾选电压数据）时，记录照常入库、点数为 0。
+// 时轴是按索引推的（第 i 点 = start + i/fs）：中间缺一个点，后面全部错位。
+// 与其画一条时间轴错的波形，不如只留记录。
+func TestNormalizeECGDropsMisalignedWaveform(t *testing.T) {
+	res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
+		ecgPayload(`{`+ecgBase+`,"voltageMeasurements":[`+
+			`{"voltage":1,"units":"mcV"},`+
+			`{"units":"mcV"},`+ // 这个点没有电压值
+			`{"voltage":3,"units":"mcV"}]}`))
+	if len(res.ECG) != 1 {
+		t.Fatalf("记录必须保留，实际 %d 条", len(res.ECG))
+	}
+	r := res.ECG[0]
+	if len(r.Voltages) != 0 || r.VoltageCount != 0 {
+		t.Fatalf("点数不完整时不该存波形，实际 %d 点", len(r.Voltages))
+	}
+	// 判定与心率不受波形影响
+	if r.ClassificationCode != ecg.CodeSinusRhythm || r.AverageHeartRate == nil {
+		t.Fatalf("波形缺失不该影响判定与心率: %+v", r)
+	}
+	// 单位仍然留着：上游本来就标了单位，只是这段没采全
+	if r.VoltageUnit != "mcV" {
+		t.Fatalf("单位应保留，实际 %q", r.VoltageUnit)
+	}
+}
+
+// 上游本就没给波形（该自动化没勾选电压数据）时，记录照常入库。
 func TestNormalizeECGWithoutVoltageMeasurements(t *testing.T) {
 	res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
-		ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","classification":"窦性心律",`+
-			`"source":"Apple Watch"}`))
+		ecgPayload(`{`+ecgBase+`}`))
 	if len(res.ECG) != 1 {
 		t.Fatalf("应归一 1 条，实际 %d", len(res.ECG))
 	}
-	if res.ECG[0].VoltageCount != 0 {
-		t.Fatalf("上游没声明点数时不该造出数来，实际 %d", res.ECG[0].VoltageCount)
+	if res.ECG[0].VoltageCount != 0 || res.ECG[0].Voltages != nil {
+		t.Fatalf("无波形时不该造出点来: %d / %v", res.ECG[0].VoltageCount, res.ECG[0].Voltages)
 	}
 }
 
@@ -153,7 +184,7 @@ func TestNormalizeECGIgnoresNonPositiveSamplingFrequency(t *testing.T) {
 	for _, raw := range []string{`"samplingFrequency":0`, `"samplingFrequency":-512`} {
 		res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
 			ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","classification":"窦性心律",`+
-				`"source":"Apple Watch",`+raw+`}`))
+				`"source":"Apple Watch",`+raw+`,"voltageMeasurements":[{"voltage":1,"units":"mcV"}]}`))
 		if len(res.ECG) != 1 {
 			t.Fatalf("%s：应归一 1 条，实际 %d", raw, len(res.ECG))
 		}
@@ -166,7 +197,7 @@ func TestNormalizeECGIgnoresNonPositiveSamplingFrequency(t *testing.T) {
 // ECG 不产生 samples/运动/睡眠：把它混进这些通道会让天级聚合凭空多出数据。
 func TestNormalizeECGDoesNotLeakIntoOtherChannels(t *testing.T) {
 	res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
-		ecgPayload(`{`+ecgBase+`}`))
+		ecgPayload(`{`+ecgBase+`,"voltageMeasurements":[{"voltage":1,"units":"mcV"}]}`))
 	if len(res.Samples) != 0 || len(res.Workouts) != 0 || len(res.Sleep) != 0 {
 		t.Fatalf("心电不该进其它通道: samples=%d workouts=%d sleep=%d",
 			len(res.Samples), len(res.Workouts), len(res.Sleep))
@@ -176,7 +207,7 @@ func TestNormalizeECGDoesNotLeakIntoOtherChannels(t *testing.T) {
 	}
 }
 
-// 真实导出文件的形态：source 是对象、时间带偏移。
+// 真实导出文件的形态：voltage 是浮点、date 是 unix 秒、source 是对象。
 // 这里只断言「解析器不挑形态」，具体数值由真实文件端到端用例覆盖。
 func TestParseECGAcceptsRealShape(t *testing.T) {
 	raw := ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","end":"2026-10-13 23:16:45 +0800",` +
@@ -190,6 +221,13 @@ func TestParseECGAcceptsRealShape(t *testing.T) {
 	}
 	if len(p.Data.ECG) != 1 {
 		t.Fatalf("应解析出 1 条心电记录，实际 %d", len(p.Data.ECG))
+	}
+	if got := len(p.Data.ECG[0].VoltageMeasurements); got != 2 {
+		t.Fatalf("电压点应为 2 个，实际 %d", got)
+	}
+	// 字符串形式的电压也要认（Float 容错）
+	if v := p.Data.ECG[0].VoltageMeasurements[1].Voltage; !v.Set || v.Value != 43.875 {
+		t.Fatalf("字符串电压应解析为 43.875，实际 %+v", v)
 	}
 	// 心电图不计入 received（与聚合睡眠同理：不产生 samples）
 	if p.Count() != 0 {

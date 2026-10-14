@@ -174,8 +174,8 @@ CREATE TABLE metric_defs (
 > 「关键处理规则」；新增指标时还要同步 `web/src/lib/metric-groups.ts`，
 > 否则趋势页的选择器里没有入口。
 >
-> 事件表里 `workouts` 与 `ecg` 已落地：心电见 `migrations/0005_ecg.sql`，
-> 判定归一在 `internal/domain/ecg/classify.go`
+> 事件表里 `workouts` 与 `ecg` 已落地：心电见 `migrations/0005_ecg.sql`
+> （元信息与波形分两张表）、判定归一在 `internal/domain/ecg/classify.go`
 > （上游 `classification` 是本地化文本，必须收敛成稳定码）。
 
 ### 5.2 原始样本表（hypertable）

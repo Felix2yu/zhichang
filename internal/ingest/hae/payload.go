@@ -88,14 +88,26 @@ type Data struct {
 // Classification 是**本地化文本**（简中「窦性心律」、英文 "Sinus Rhythm"），
 // 不是稳定枚举——归一由 domain/ecg 负责，这里只负责把原文拿全。
 type ECG struct {
-	Start                       string     `json:"start"`
-	End                         string     `json:"end"`
-	Classification              string     `json:"classification"`
-	Severity                    string     `json:"severity"`
-	AverageHeartRate            Float      `json:"averageHeartRate"`
-	NumberOfVoltageMeasurements Float      `json:"numberOfVoltageMeasurements"`
-	SamplingFrequency           Float      `json:"samplingFrequency"`
-	Source                      SourceName `json:"source"`
+	Start                       string               `json:"start"`
+	End                         string               `json:"end"`
+	Classification              string               `json:"classification"`
+	Severity                    string               `json:"severity"`
+	AverageHeartRate            Float                `json:"averageHeartRate"`
+	NumberOfVoltageMeasurements Float                `json:"numberOfVoltageMeasurements"`
+	SamplingFrequency           Float                `json:"samplingFrequency"`
+	Source                      SourceName           `json:"source"`
+	VoltageMeasurements         []VoltageMeasurement `json:"voltageMeasurements"`
+}
+
+// VoltageMeasurement 是一个电压采样点。
+//
+// 上游还带一个逐点的 date，这里**故意不解析**：它的形态在 HAE 各版本间变过
+// （实测是 unix 秒浮点，官方文档举例却是日期字符串），而时轴完全可以由
+// start_time 与 sampling_frequency 推出（第 i 点即 start + i/fs）。
+// 存下来只会把两种形态一起固化，并让「时轴」有两个可能互相矛盾的事实来源。
+type VoltageMeasurement struct {
+	Voltage Float  `json:"voltage"`
+	Units   string `json:"units"`
 }
 
 // Metric 是一类健康指标。

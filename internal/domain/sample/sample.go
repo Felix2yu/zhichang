@@ -100,7 +100,9 @@ type ECGRecord struct {
 	ClassificationCode ecg.Code
 	AverageHeartRate   *float64
 	SamplingFrequency  *int
-	// VoltageCount 是上游声明的波形点数（numberOfVoltageMeasurements）。
-	// 本次只落元数据，波形本身在重量版里才存，所以这里保留它用于核对导出是否被截断。
+	// VoltageCount 是实际拿到的点数；Voltages 为空时它说明上游本就没给波形。
 	VoltageCount int
+	VoltageUnit  string
+	// Voltages 按时间升序；第 i 点对应 StartTime + i/SamplingFrequency。
+	Voltages []float64
 }

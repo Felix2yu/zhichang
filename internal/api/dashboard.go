@@ -41,6 +41,7 @@ func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/sleep/night-metrics", d.sleepNightMetrics)
 	r.Get("/api/workouts", d.workouts)
 	r.Get("/api/ecg", d.ecgRecords)
+	r.Get("/api/ecg/waveform", d.ecgWaveform)
 	r.Get("/api/sources", d.sources)
 	r.Get("/api/goals", d.listGoals)
 	r.Get("/api/sync/status", d.syncStatus)
