@@ -21,7 +21,7 @@ type DailyPoint struct {
 // DailySeries 读取指定指标在日期区间内的天级序列。
 func (db *DB) DailySeries(ctx context.Context, metrics []string, from, to string) ([]DailyPoint, error) {
 	if len(metrics) == 0 {
-		return nil, nil
+		return []DailyPoint{}, nil
 	}
 	fd, err := parseDate(from)
 	if err != nil {
@@ -154,7 +154,7 @@ func (db *DB) Samples(ctx context.Context, metric, from, to string, limit int) (
 		return nil, err
 	}
 	defer rows.Close()
-	var out []SampleRow
+	out := make([]SampleRow, 0, 64)
 	for rows.Next() {
 		var r SampleRow
 		var st, et time.Time
@@ -200,7 +200,7 @@ func (db *DB) SleepRange(ctx context.Context, from, to string) ([]SleepRow, erro
 		return nil, err
 	}
 	defer rows.Close()
-	var out []SleepRow
+	out := make([]SleepRow, 0, 64)
 	for rows.Next() {
 		var r SleepRow
 		var ld pgtype.Date
@@ -252,7 +252,7 @@ func (db *DB) WorkoutRange(ctx context.Context, from, to string) ([]WorkoutRow, 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []WorkoutRow
+	out := make([]WorkoutRow, 0, 64)
 	for rows.Next() {
 		var r WorkoutRow
 		var ld pgtype.Date
@@ -289,7 +289,7 @@ func (db *DB) Sources(ctx context.Context) ([]SourceRow, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []SourceRow
+	out := make([]SourceRow, 0, 16)
 	for rows.Next() {
 		var r SourceRow
 		if err := rows.Scan(&r.Source, &r.DeviceType, &r.Preferred, &r.FirstSeen, &r.LastSeen, &r.Samples); err != nil {
@@ -302,11 +302,11 @@ func (db *DB) Sources(ctx context.Context) ([]SourceRow, error) {
 
 // SyncStatus 是同步健康度概览。
 type SyncStatus struct {
-	LastRun     *RunBrief   `json:"last_run,omitempty"`
-	RecentRuns  []RunBrief  `json:"recent_runs"`
+	LastRun     *RunBrief      `json:"last_run,omitempty"`
+	RecentRuns  []RunBrief     `json:"recent_runs"`
 	Watermarks  []WatermarkRow `json:"watermarks"`
-	MissingDays []string    `json:"missing_days"`
-	HomeTZ      string      `json:"home_timezone,omitempty"`
+	MissingDays []string       `json:"missing_days"`
+	HomeTZ      string         `json:"home_timezone,omitempty"`
 }
 
 // RunBrief 是一次摄入的简要信息。
@@ -333,7 +333,13 @@ type WatermarkRow struct {
 
 // SyncStatusOf 汇总同步状态与数据缺口。
 func (db *DB) SyncStatusOf(ctx context.Context, days int) (SyncStatus, error) {
-	var st SyncStatus
+	// 三个 slice 字段必须初始化：nil slice 会被编码成 JSON null，
+	// 前端拿到 null 后展开/取下标会直接抛错。
+	st := SyncStatus{
+		RecentRuns:  make([]RunBrief, 0, 10),
+		Watermarks:  make([]WatermarkRow, 0, 16),
+		MissingDays: make([]string, 0, days),
+	}
 	rows, err := db.Pool.Query(ctx, `SELECT id, transport, COALESCE(automation_id,''), COALESCE(session_id,''), received_at,
 		sample_count, inserted, duplicates, status, error
 		FROM ingest_runs ORDER BY received_at DESC LIMIT 10`)
@@ -401,7 +407,7 @@ func collectDaily(rows interface {
 	Scan(dest ...any) error
 	Err() error
 }) ([]DailyPoint, error) {
-	var out []DailyPoint
+	out := make([]DailyPoint, 0, 64)
 	for rows.Next() {
 		var p DailyPoint
 		var ld pgtype.Date
