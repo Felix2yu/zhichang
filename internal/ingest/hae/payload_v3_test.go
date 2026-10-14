@@ -36,10 +36,11 @@ func TestParsePayloadAcceptsNewExportShape(t *testing.T) {
 		t.Fatalf("v3 样例解析数量错误: metrics=%d workouts=%d", len(p.Data.Metrics), len(p.Data.Workouts))
 	}
 
-	// 对象形态的来源：取 name，不带 identifier 的壳
+	// 对象形态的来源：取 name，不带 identifier 的壳。
+	// 样例文件里的名字带 NBSP（真实导出就是这样），出口处统一收成普通空格。
 	w := p.Data.Workouts[0]
-	if got := string(w.Source); got != "小明的Apple\u00a0Watch" {
-		t.Fatalf("对象来源应取 name 字段，实际 %q", got)
+	if got := string(w.Source); got != "小明的Apple Watch" {
+		t.Fatalf("对象来源应取 name 字段并归一空白，实际 %q", got)
 	}
 	if !w.Duration.Set || w.Duration.Value != 1234.5 {
 		t.Fatalf("新版 duration（秒）解析错误: %+v", w.Duration)
@@ -77,6 +78,10 @@ func TestSourceNameUnmarshal(t *testing.T) {
 	}{
 		{"字符串形态（旧版）", `"source":"Apple Watch"`, "Apple Watch"},
 		{"对象形态（新版）", `"source":{"name":"小明的Apple Watch","identifier":"com.apple.health.x"}`, "小明的Apple Watch"},
+		// 真实导出用的是 NBSP：出口必须收成普通空格，否则同一台设备会分裂成两个来源
+		{"字符串里的 NBSP", `"source":"小明的Apple\u00a0Watch"`, "小明的Apple Watch"},
+		{"对象 name 里的 NBSP", `"source":{"name":"小明的Apple\u00a0Watch"}`, "小明的Apple Watch"},
+		{"多来源拼串归一管空格", `"source":"小明的Apple\u00a0Watch|小明的iPhone"`, "小明的Apple Watch | 小明的iPhone"},
 		{"对象缺少 name", `"source":{"identifier":"x"}`, ""},
 		{"空字符串", `"source":""`, ""},
 		{"JSON null", `"source":null`, ""},

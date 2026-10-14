@@ -97,9 +97,10 @@ func TestNormalizeRealExportAliasNamesUseCanonicalMetric(t *testing.T) {
 	if s.Metric != "oxygen_saturation" {
 		t.Fatalf("血氧必须落到 oxygen_saturation，实际 %q", s.Metric)
 	}
-	// 来源名里的 NBSP 不该被指标名收敛顺手改掉
-	if s.Source != "小明的Apple\u00a0Watch" {
-		t.Fatalf("来源名应原样保留，实际 %q", s.Source)
+	// 来源名里的 NBSP 要归一成普通空格：真实导出里所有 Watch 点位都是 NBSP，
+	// 不归一的话同一台设备会在 sources 页显示成两条「看起来一样」的记录。
+	if s.Source != "小明的Apple Watch" {
+		t.Fatalf("来源名的不可见空白应归一，实际 %q", s.Source)
 	}
 	almost(t, "血氧值", s.Value, 96.27272727272727, 1e-9)
 }
