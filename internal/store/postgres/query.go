@@ -177,10 +177,13 @@ func (db *DB) Samples(ctx context.Context, metric, from, to string, limit int) (
 // 除原始入睡/分期数据外，另带 tz_offset_min（本地入睡时刻要靠它还原）与
 // awake_count（夜间清醒段数，仅当导出含睡眠分段数据时才有值，否则为 nil）。
 type SleepRow struct {
-	LocalDate    string   `json:"local_date"`
-	Source       string   `json:"source"`
-	SleepStart   *string  `json:"sleep_start,omitempty"`
-	SleepEnd     *string  `json:"sleep_end,omitempty"`
+	LocalDate  string  `json:"local_date"`
+	Source     string  `json:"source"`
+	SleepStart *string `json:"sleep_start,omitempty"`
+	SleepEnd   *string `json:"sleep_end,omitempty"`
+	// 上床/离床时刻：与 sleep_start 相减即「入睡潜伏期」（躺下到真正睡着）。
+	InBedStart   *string  `json:"in_bed_start,omitempty"`
+	InBedEnd     *string  `json:"in_bed_end,omitempty"`
 	TotalSleepHr *float64 `json:"total_sleep_hr,omitempty"`
 	AsleepHr     *float64 `json:"asleep_hr,omitempty"`
 	CoreHr       *float64 `json:"core_hr,omitempty"`
@@ -205,7 +208,7 @@ func (db *DB) SleepRange(ctx context.Context, from, to string) ([]SleepRow, erro
 	// awake_count 用「入床时间窗内的睡眠分段样本」统计：
 	// 分段样本的 local_date 落在各段自身的起始日，跨零点后会与睡眠会话的 local_date
 	// （以 sleepStart 为准）错开一天，因此按时间窗而不是按 local_date 关联。
-	rows, err := db.Pool.Query(ctx, `SELECT s.local_date, s.source, s.sleep_start, s.sleep_end,
+	rows, err := db.Pool.Query(ctx, `SELECT local_date, source, sleep_start, sleep_end, in_bed_start, in_bed_end,
 			s.total_sleep_hr, s.asleep_hr, s.core_hr, s.deep_hr, s.rem_hr, s.awake_hr, s.in_bed_hr, s.tz_offset_min,
 			(SELECT CASE WHEN count(*) = 0 THEN NULL
 			             ELSE count(*) FILTER (WHERE lower(coalesce(p.meta->>'stage', '')) LIKE '%awake%'
@@ -223,8 +226,8 @@ func (db *DB) SleepRange(ctx context.Context, from, to string) ([]SleepRow, erro
 	for rows.Next() {
 		var r SleepRow
 		var ld pgtype.Date
-		var ss, se *time.Time
-		if err := rows.Scan(&ld, &r.Source, &ss, &se, &r.TotalSleepHr, &r.AsleepHr, &r.CoreHr, &r.DeepHr, &r.RemHr, &r.AwakeHr, &r.InBedHr, &r.TZOffsetMin, &r.AwakeCount); err != nil {
+		var ss, se, bs, be *time.Time
+		if err := rows.Scan(&ld, &r.Source, &ss, &se, &bs, &be, &r.TotalSleepHr, &r.AsleepHr, &r.CoreHr, &r.DeepHr, &r.RemHr, &r.AwakeHr, &r.InBedHr, &r.TZOffsetMin, &r.AwakeCount); err != nil {
 			return nil, err
 		}
 		r.LocalDate = ld.Time.Format("2006-01-02")
@@ -235,6 +238,14 @@ func (db *DB) SleepRange(ctx context.Context, from, to string) ([]SleepRow, erro
 		if se != nil {
 			s := se.UTC().Format(time.RFC3339)
 			r.SleepEnd = &s
+		}
+		if bs != nil {
+			s := bs.UTC().Format(time.RFC3339)
+			r.InBedStart = &s
+		}
+		if be != nil {
+			s := be.UTC().Format(time.RFC3339)
+			r.InBedEnd = &s
 		}
 		out = append(out, r)
 	}

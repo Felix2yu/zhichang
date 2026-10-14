@@ -109,6 +109,17 @@ func TestSleepRangeExposesAwakeAndInterruptions(t *testing.T) {
 	if n.SleepStart == nil || *n.SleepStart != sleepStart.UTC().Format(time.RFC3339) {
 		t.Fatalf("sleep_start 不符，实际 %v", n.SleepStart)
 	}
+	// in_bed_start/end 必须透出：前端要靠 sleep_start - in_bed_start 算入睡潜伏期
+	if n.InBedStart == nil || *n.InBedStart != inBedStart.UTC().Format(time.RFC3339) {
+		t.Fatalf("in_bed_start 未透出或不符，实际 %v", n.InBedStart)
+	}
+	if n.InBedEnd == nil || *n.InBedEnd != inBedEnd.UTC().Format(time.RFC3339) {
+		t.Fatalf("in_bed_end 未透出或不符，实际 %v", n.InBedEnd)
+	}
+	// 完全没有 in_bed 数据的夜晚必须是 nil，前端据此不显示潜伏期
+	if rows[0].InBedStart != nil {
+		t.Fatalf("无 in_bed 数据的夜晚 InBedStart 应为 nil，实际 %v", rows[0].InBedStart)
+	}
 	if n.AwakeCount == nil {
 		t.Fatal("有分段样本的夜晚 awake_count 不应为 NULL")
 	}
