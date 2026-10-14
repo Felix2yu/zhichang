@@ -1,21 +1,23 @@
-// 身体指标的分组配置——对齐苹果健康「浏览」页的分类方式。
+// 身体指标的分类配置——对齐苹果健康「浏览」页的分类方式。
 //
-// 设计原则：
-// 1. 每个分组内的指标在量级 / 量纲上相近，可共用一张图的自适应坐标轴，
-//    避免原来「步数上万 vs 心率/体重几十」挤在同一坐标轴的可读性灾难。
-// 2. 分组名与苹果健康保持一致（活动、心脏、身体测量、血压、睡眠、呼吸等），
-//    因为本应用数据完全来自苹果健康同步，分类口径应与之对齐。
-// 3. 分组为展示层概念，纯前端维护，不进入 API / 数据库契约。
+// 定位：分组只是「版式分区」，用于组织趋势页的阅读层级与指标筛选器，
+// **不**表示把同一分组内的指标画进同一张图。趋势页里每个指标各自独立成图，
+// 拥有自己的坐标轴与单位标注。
+//
+// 之所以按苹果健康分类：本应用数据全部来自苹果健康同步，分类口径需与之对齐，
+// 用户的心智模型也来自苹果健康。
+//
+// 分组为纯展示层概念，不进入 API / 数据库契约。
 
 export type MetricGroup = {
 	/** 分组稳定标识 */
 	id: string;
-	/** 中文分类名（对齐苹果健康） */
+	/** 分类名（对齐苹果健康） */
 	label: string;
-	/** 分组图标（emoji，便于移动端快速辨识） */
-	icon: string;
-	/** 单位 / 成员提示，展示在图标题右侧 */
-	hint: string;
+	/** 一句话分类描述，用于分区表头 */
+	desc: string;
+	/** 该分类的统一强调色：用于分区标记与组内图表主色（低饱和，与全局调性一致） */
+	tint: string;
 	/** 该分组包含的指标 metric 列表 */
 	metrics: string[];
 };
@@ -25,8 +27,8 @@ export const METRIC_GROUPS: MetricGroup[] = [
 	{
 		id: 'activity',
 		label: '活动',
-		icon: '🏃',
-		hint: '步数 · 能量 · 距离 · 楼层 · 锻炼',
+		desc: '步数、能量、距离、楼层与锻炼时长',
+		tint: '#0f6e56',
 		metrics: [
 			'step_count',
 			'active_energy',
@@ -41,8 +43,8 @@ export const METRIC_GROUPS: MetricGroup[] = [
 	{
 		id: 'heart',
 		label: '心脏',
-		icon: '❤️',
-		hint: '心率 · 血氧 · 呼吸频率',
+		desc: '心率、心率变异性、血氧与呼吸频率',
+		tint: '#a3475c',
 		metrics: [
 			'heart_rate',
 			'resting_heart_rate',
@@ -55,8 +57,8 @@ export const METRIC_GROUPS: MetricGroup[] = [
 	{
 		id: 'body',
 		label: '身体测量',
-		icon: '📏',
-		hint: '体重 · BMI · 体脂 · 身高 · 体温',
+		desc: '体重、BMI、体脂、身高、体温与最大摄氧量',
+		tint: '#2f6fb0',
 		metrics: [
 			'body_mass',
 			'weight_&_body_mass',
@@ -71,50 +73,50 @@ export const METRIC_GROUPS: MetricGroup[] = [
 	{
 		id: 'bp',
 		label: '血压',
-		icon: '🩺',
-		hint: '收缩压 · 舒张压',
+		desc: '收缩压与舒张压',
+		tint: '#25507f',
 		metrics: ['blood_pressure_systolic', 'blood_pressure_diastolic']
 	},
 	{
 		id: 'glucose',
 		label: '血糖',
-		icon: '🩸',
-		hint: '血糖',
+		desc: '血糖浓度',
+		tint: '#b07a2a',
 		metrics: ['blood_glucose']
 	},
 	{
 		id: 'sleep',
 		label: '睡眠',
-		icon: '💤',
-		hint: '睡眠时长',
+		desc: '每日睡眠时长',
+		tint: '#5a6b8c',
 		metrics: ['sleep_analysis']
 	},
 	{
 		id: 'respiratory',
 		label: '呼吸',
-		icon: '🫁',
-		hint: '肺活量 · 呼气流速',
+		desc: '肺活量与呼气流速',
+		tint: '#3f7d6b',
 		metrics: ['peak_expiratory_flow_rate', 'forced_vital_capacity']
 	},
 	{
 		id: 'hydration',
 		label: '水分',
-		icon: '💧',
-		hint: '饮水量',
+		desc: '每日饮水量',
+		tint: '#3f7fa6',
 		metrics: ['dietary_water']
 	},
 	{
 		id: 'mindful',
 		label: '正念',
-		icon: '🧘',
-		hint: '正念时长',
+		desc: '正念练习时长',
+		tint: '#7a6a9c',
 		metrics: ['mindful_minutes']
 	},
 	{
 		id: 'other',
 		label: '其他',
-		icon: '🧩',
-		hint: '洗手 · 刷牙 · 心情 · 步速 · 步幅',
+		desc: '洗手、刷牙、心理状态、步行速度与步幅',
+		tint: '#7b7f87',
 		metrics: [
 			'handwashing',
 			'toothbrushing',
@@ -131,7 +133,7 @@ export function groupOf(metric: string): MetricGroup {
 }
 
 // 单位 → 小数位。整数型量级（步数、千卡、分钟、小时、计数）取 0，
-// 带小数的量（kg、bpm、℃、%、mg/dL、cm、L 等）取 1。
+// 带小数的量（kg、℃、%、mg/dL、cm、L 等）取 1。
 const UNIT_DIGITS: Record<string, number> = {
 	count: 0,
 	kcal: 0,
