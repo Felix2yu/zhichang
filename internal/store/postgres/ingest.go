@@ -28,6 +28,10 @@ type RunMeta struct {
 }
 
 // IngestStats 是一次摄入的统计结果。
+//
+// Workouts / Sleep / ECG 只反映本次请求的实况，不像别的字段那样落进 ingest_runs：
+// 事件表各有自己的去重键，重复提交时按 session 回放的是样本统计，
+// 这几个计数会读回 0。这是既有口径（Workouts/Sleep 一直如此），不是心电特有的。
 type IngestStats struct {
 	RunID        int64
 	Received     int
@@ -36,6 +40,7 @@ type IngestStats struct {
 	Updated      int
 	Workouts     int
 	Sleep        int
+	ECG          int
 	AffectedFrom string
 	AffectedTo   string
 	DuplicateRun bool

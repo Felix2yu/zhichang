@@ -6,6 +6,7 @@
 		{ href: '/trends', label: '趋势' },
 		{ href: '/sleep', label: '睡眠' },
 		{ href: '/workouts', label: '运动' },
+		{ href: '/ecg', label: '心电图' },
 		{ href: '/sync', label: '数据源' }
 	];
 

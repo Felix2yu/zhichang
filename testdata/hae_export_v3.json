@@ -98,6 +98,27 @@
         "totalDistance": { "qty": 2.4, "units": "km" },
         "source": "Apple Watch"
       }
+    ],
+    "ecg": [
+      {
+        "start": "2026-10-13 23:16:15 +0800",
+        "end": "2026-10-13 23:16:45 +0800",
+        "classification": "窦性心律",
+        "averageHeartRate": 78,
+        "numberOfVoltageMeasurements": 5,
+        "samplingFrequency": 512,
+        "source": {
+          "name": "移动心电图房颤提示软件",
+          "identifier": "com.apple.health.ecg"
+        },
+        "voltageMeasurements": [
+          { "date": 1791904575.806009, "voltage": -27.408340454101562, "units": "mcV" },
+          { "date": 1791904575.8079622, "voltage": -1.1310367584228516, "units": "mcV" },
+          { "date": 1791904575.8099153, "voltage": 22.79483985900879, "units": "mcV" },
+          { "date": 1791904575.8118684, "voltage": 43.87456512451172, "units": "mcV" },
+          { "date": 1791904575.8138216, "voltage": 898.75146484375, "units": "mcV" }
+        ]
+      }
     ]
   }
 }

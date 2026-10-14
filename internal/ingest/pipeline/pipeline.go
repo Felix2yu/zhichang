@@ -93,6 +93,9 @@ func (s *Service) run(ctx context.Context, runID int64, payload *hae.Payload, me
 			sources[w.Source] = struct{}{}
 		}
 	}
+	// 睡眠与心电的来源不登记进 sources：那张表是「谁产出了 samples」的清单，
+	// 列表页按 samples 计数，把只产事件表的来源写进去只会多出一行「0 条样本」，
+	// 看着像故障。心电的来源名（实测是「移动心电图房颤提示软件」）随记录一同展示。
 
 	inserted, updated, from, to, err := s.db.WriteSamples(ctx, runID, res.Samples, s.mode)
 	if err != nil {
@@ -110,6 +113,11 @@ func (s *Service) run(ctx context.Context, runID int64, payload *hae.Payload, me
 		return err
 	} else {
 		out.Sleep = n
+	}
+	if n, err := s.db.WriteECG(ctx, runID, res.ECG); err != nil {
+		return err
+	} else {
+		out.ECG = n
 	}
 
 	sourceList := make([]string, 0, len(sources))

@@ -2,8 +2,10 @@ package hae
 
 import (
 	"math"
+	"strings"
 	"time"
 
+	"github.com/Felix2yu/zhichang/internal/domain/ecg"
 	"github.com/Felix2yu/zhichang/internal/domain/metric"
 	"github.com/Felix2yu/zhichang/internal/domain/sample"
 	"github.com/Felix2yu/zhichang/internal/domain/tz"
@@ -14,6 +16,7 @@ type Result struct {
 	Samples  []sample.Sample
 	Workouts []sample.Workout
 	Sleep    []sample.SleepSession
+	ECG      []sample.ECGRecord
 	// Unknown 记录未在指标字典中登记的指标名（去重后）。
 	Unknown []string
 	// Skipped 因缺值/时间不可解析而丢弃的记录数。
@@ -97,6 +100,15 @@ func Normalize(p *Payload, reg *metric.Registry, home *time.Location) Result {
 			continue
 		}
 		res.Workouts = append(res.Workouts, wo)
+	}
+
+	for _, e := range p.Data.ECG {
+		rec, ok := normalizeECG(e, home)
+		if !ok {
+			res.Skipped++
+			continue
+		}
+		res.ECG = append(res.ECG, rec)
 	}
 
 	for name := range unknown {
@@ -275,6 +287,45 @@ func workoutDurationMin(raw float64, span time.Duration) float64 {
 		return raw / secondsPerMinute
 	}
 	return raw
+}
+
+// normalizeECG 归一一条心电测量。
+//
+// 判定文本一律交给 ecg.Classify，绝不在这里按整串比较：上游给的是本地化文本
+// （简中「窦性心律」/ 英文 "Sinus Rhythm"），按整串比会在换手机语言时静默失效。
+func normalizeECG(e ECG, home *time.Location) (sample.ECGRecord, bool) {
+	st, offMin, ok := tz.ParseWithFallback(e.Start, home)
+	if !ok {
+		return sample.ECGRecord{}, false
+	}
+	out := sample.ECGRecord{
+		Source:             string(e.Source),
+		StartTime:          st,
+		TZOffsetMin:        tz.OffsetOrDefault(offMin, st, home),
+		LocalDate:          tz.LocalDate(st, offMin, home),
+		Classification:     strings.TrimSpace(e.Classification),
+		ClassificationCode: ecg.Classify(e.Classification),
+	}
+	if et, _, ok := tz.ParseWithFallback(e.End, home); ok && !et.Before(st) {
+		out.EndTime = et
+	} else {
+		out.EndTime = st
+	}
+	if e.AverageHeartRate.Set {
+		v := e.AverageHeartRate.Value
+		out.AverageHeartRate = &v
+	}
+	// 采样率为 0 或负时视为缺失：它是时轴的分母，拿 0 去推时轴会直接除零。
+	if e.SamplingFrequency.Set && e.SamplingFrequency.Value > 0 {
+		v := int(e.SamplingFrequency.Value)
+		out.SamplingFrequency = &v
+	}
+	// 本版只落元数据、不解析波形，所以点数记上游声明的 numberOfVoltageMeasurements，
+	// 供列表页显示「这次测量带了多少个采样点」。
+	if e.NumberOfVoltageMeasurements.Set {
+		out.VoltageCount = int(e.NumberOfVoltageMeasurements.Value)
+	}
+	return out, true
 }
 
 // pickValue 按字典声明的字段取值。

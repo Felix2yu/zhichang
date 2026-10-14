@@ -7,7 +7,7 @@
 - **后端**：Go 1.27 · chi · pgx v5 · TimescaleDB 2.30（PostgreSQL 18）
 - **前端**：SvelteKit 3 · Svelte 5 · Tailwind v4 · ECharts 6（构建产物内嵌进 Go 二进制）
 - **接入**：Health Auto Export REST API（主通道）· MQTT（可选旁路，默认关闭）
-- **AI**：内置 MCP 服务器（stdio + Streamable HTTP），10 个只读工具
+- **AI**：内置 MCP 服务器（stdio + Streamable HTTP），11 个只读工具
 
 ## 快速开始
 
@@ -90,6 +90,7 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 | 睡眠时间表矩阵 | 横轴是「相对 18:00 的本夜分钟轴」，与分期时间线同一把尺子（凌晨的时刻不会把行切断）；留白 = 那晚没有分段记录，由前端按日期序列补，后端只回有数据的夜晚；`/api/sleep/stages/range` 服务端截到 120 天、前端最多画 90 晚 |
 | 入睡后清醒（WASO） | 取**入睡时间窗内**清醒分段的时长合计，不含「躺下到睡着」之间的那段（那是入睡潜伏期）；与整晚清醒合计 `awake_hr` 相对，没有分段数据时不回退估算。睡眠中点由前端算：入睡与起床在「相对 18:00 的环形时刻轴」上的正中 |
 | 睡眠窗生理指标 | 夜间心率/HRV/血氧/呼吸频率按 `sleep_sessions` 的**入睡时间窗** `[sleep_start, sleep_end)` 关联样本，不按 `local_date`（样本按各自起始日归属，跨零点的后半夜会整段漏掉；取 `{睡眠日, 次日}` 两天只为走索引/裁 chunk）；**一晚只认一个来源**——会话来源优先，否则窗口内样本数最多，不跨来源平均（手表 5 分钟一条、手机低频，平均会被采样密度带偏）；无 `sleep_start` 时退到上床/离床，同晚有午睡与夜觉时取夜觉；「夜间最低」取窗口内 `value_min` 的最小，与 iPhone 睡眠详情页同口径；「最低出现时刻」用打出该最低值的样本自带偏移还原，缺偏移则不显示 |
+| 心电（ECG） | 事件数据，与睡眠/运动一样**不产生 samples**、不进天级聚合，也**不计入 `received`**（计进去会让 received 与落库条数对不上，掩盖真正丢数）；接收条数单独走响应里的 `ecg` 字段<br>判定 `classification` 是**本地化文本**（简中「窦性心律」/ 英文 `Sinus Rhythm`），入库时收敛成稳定码（`sinus_rhythm`、`atrial_fibrillation`、`inconclusive_low_heart_rate` …），原文并存：码用于统计筛选、原文用于核对与兜底展示。**绝不按整串比较判定**——换一次手机语言，历史数据就会与之后的分裂成两组 |
 
 天级聚合落在 `daily_metrics`（每来源）与 `daily_metrics_day`（收敛值）两张表，由摄入写入时按受影响的 `(日期, 指标)` 入队异步重算；服务重启后会继续消费未完成的队列。
 
@@ -113,7 +114,7 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 
 ## MCP
 
-内置 10 个只读工具：`health_list_metrics`、`health_daily_summary`、`health_query`、`health_compare`、`health_latest`、`health_sleep`、`health_sleep_detail`、`health_workouts`、`health_data_coverage`、`health_correlation`。
+内置 11 个只读工具：`health_list_metrics`、`health_daily_summary`、`health_query`、`health_compare`、`health_latest`、`health_sleep`、`health_sleep_detail`、`health_workouts`、`health_ecg`、`health_data_coverage`、`health_correlation`。
 
 **stdio（Claude Desktop 等）**
 
@@ -166,4 +167,4 @@ Service Worker 缓存名按构建版本变化并在 `activate` 阶段清旧。
 - iOS 侧：Health Auto Export 仅在设备解锁且后台刷新可用时运行，锁屏/低电量会延迟同步（Apple 限制，无法绕过）。
 - `strict` 去重模式下，同一来源同一起点但数值被源端修正的累计量不会覆盖（需切 `latest` 模式并重建索引）。
 - 压缩策略默认 30 天后开启，压缩后的 chunk 不能写入；回填历史数据前需先解压对应区间。
-- 一期指标范围：健康指标 + 睡眠 + 运动；ECG、心率通知、心理状态、周期、症状、药物留待后续。
+- 一期指标范围：健康指标 + 睡眠 + 运动 + 心电图；心率通知、心理状态、周期、症状、药物留待后续。

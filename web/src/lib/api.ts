@@ -167,6 +167,29 @@ export type GoalRow = {
 	updated_at: string;
 };
 
+/** 一条心电记录 */
+export type EcgRecord = {
+	id: number;
+	local_date: string;
+	/** UTC RFC3339 */
+	start: string;
+	/** UTC RFC3339 */
+	end: string;
+	duration_sec: number;
+	/** 上游原文，随手机语言变化（简中「窦性心律」/ 英文 "Sinus Rhythm"） */
+	classification: string;
+	/** 归一后的稳定码，跨语言可比 */
+	classification_code: string;
+	/** 归一后的统一措辞；classification_known=false 时它就是上游原文 */
+	classification_label: string;
+	classification_known: boolean;
+	average_heart_rate?: number;
+	sampling_frequency?: number;
+	voltage_count: number;
+	source: string;
+	tz_offset_min: number;
+};
+
 export type SourceRow = {
 	source: string;
 	device_class: string;
@@ -252,6 +275,12 @@ export const api = {
 	workouts: async (from: string, to: string) => {
 		const r = await get<{ rows: WorkoutRow[] }>(`/api/workouts?from=${from}&to=${to}`);
 		return { ...r, rows: arr(r.rows) };
+	},
+	ecg: async (from: string, to: string) => {
+		const r = await get<{ from: string; to: string; records: EcgRecord[] }>(
+			`/api/ecg?from=${from}&to=${to}`
+		);
+		return { ...r, records: arr(r.records) };
 	},
 	goals: async () => {
 		const r = await get<{ goals: GoalRow[] }>('/api/goals');

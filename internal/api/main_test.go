@@ -74,7 +74,7 @@ func testDB(t *testing.T) *postgres.DB {
 func reset(t *testing.T, db *postgres.DB) {
 	t.Helper()
 	const q = `TRUNCATE samples, daily_metrics, daily_metrics_day, rollup_queue,
-		workouts, sleep_sessions, sources, ingest_runs, sync_watermark, goals`
+		workouts, sleep_sessions, ecg_records, sources, ingest_runs, sync_watermark, goals`
 	if _, err := db.Pool.Exec(context.Background(), q); err != nil {
 		t.Fatalf("清表失败: %v", err)
 	}
