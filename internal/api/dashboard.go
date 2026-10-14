@@ -33,6 +33,7 @@ func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/samples", d.samples)
 	r.Get("/api/sleep", d.sleep)
 	r.Get("/api/sleep/stages", d.sleepStages)
+	r.Get("/api/sleep/stages/range", d.sleepStagesRange)
 	r.Get("/api/sleep/night-metrics", d.sleepNightMetrics)
 	r.Get("/api/workouts", d.workouts)
 	r.Get("/api/sources", d.sources)
@@ -171,6 +172,24 @@ func (d *Dashboard) sleepNightMetrics(w http.ResponseWriter, r *http.Request) {
 	rows, err := d.db.SleepNightMetrics(r.Context(), from, to, splitList(q.Get("metrics")))
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "rows": rows})
+}
+
+// sleepStagesRange 返回区间内每晚的分期序列（睡眠时间表矩阵）。
+// 矩阵最多画最近几十个夜晚，再多就看不出单晚了，所以服务端把窗口截到 120 天。
+func (d *Dashboard) sleepStagesRange(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	from, to := d.defaultRange(q.Get("from"), q.Get("to"), 30)
+	if fd, err := time.Parse("2006-01-02", from); err == nil {
+		if td, err2 := time.Parse("2006-01-02", to); err2 == nil && td.Sub(fd) > 120*24*time.Hour {
+			from = td.AddDate(0, 0, -119).Format("2006-01-02")
+		}
+	}
+	rows, err := d.db.SleepStagesRange(r.Context(), from, to)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "rows": rows})

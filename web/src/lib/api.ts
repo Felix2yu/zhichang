@@ -134,6 +134,17 @@ export type NightMetricRow = {
 	unit: string;
 };
 
+/** 区间内某一晚的分期序列（睡眠时间表矩阵的一行） */
+export type NightStages = {
+	local_date: string;
+	source: string;
+	tz_offset_min: number;
+	has_session: boolean;
+	sleep_start?: string;
+	sleep_end?: string;
+	segments: SleepStageSeg[];
+};
+
 export type WorkoutRow = {
 	local_date: string;
 	name: string;
@@ -219,6 +230,10 @@ export const api = {
 		const q = date ? `?date=${date}` : '';
 		const r = await get<SleepStages>(`/api/sleep/stages${q}`);
 		return { ...r, segments: arr(r.segments), totals: r.totals ?? {}, physiology: arr(r.physiology) };
+	},
+	sleepStagesRange: async (from: string, to: string) => {
+		const r = await get<{ rows: NightStages[] }>(`/api/sleep/stages/range?from=${from}&to=${to}`);
+		return { ...r, rows: arr(r.rows).map((n) => ({ ...n, segments: arr(n.segments) })) };
 	},
 	sleepNightMetrics: async (from: string, to: string, metrics?: string[]) => {
 		const q = metrics?.length ? `&metrics=${encodeURIComponent(metrics.join(','))}` : '';

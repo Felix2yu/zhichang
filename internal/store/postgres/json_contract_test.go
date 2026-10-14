@@ -37,6 +37,7 @@ func TestEmptyRowsEncodeAsArray(t *testing.T) {
 			Physiology: []NightSeries{},
 		}, `{"local_date":"","source":"","tz_offset_min":0,"has_session":false,"segments":[],"totals":{},"physiology":[]}`},
 		{"NightMetricRow", map[string]any{"rows": []NightMetricRow{}}, `{"rows":[]}`},
+		{"SleepStagesRange", map[string]any{"rows": []NightStages{}}, `{"rows":[]}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
