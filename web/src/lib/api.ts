@@ -40,6 +40,10 @@ export type SleepRow = {
 	sleep_start?: string;
 	/** UTC RFC3339 */
 	sleep_end?: string;
+	/** UTC RFC3339 · 上床时刻；与 sleep_start 相减即入睡潜伏期 */
+	in_bed_start?: string;
+	/** UTC RFC3339 · 离床时刻 */
+	in_bed_end?: string;
 	total_sleep_hr?: number;
 	asleep_hr?: number;
 	core_hr?: number;
