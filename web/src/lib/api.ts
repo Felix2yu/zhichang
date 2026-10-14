@@ -56,6 +56,8 @@ export type SleepRow = {
 	tz_offset_min?: number;
 	/** 夜间清醒「段数」；仅当导出含睡眠分段数据时才有值 */
 	awake_count?: number;
+	/** 入睡后清醒时长（小时，WASO）：不含入睡前躺着的那段；无分段数据时缺省 */
+	waso_hr?: number;
 };
 
 export type SleepStageSeg = {

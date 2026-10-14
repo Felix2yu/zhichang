@@ -126,6 +126,17 @@ func TestSleepRangeExposesAwakeAndInterruptions(t *testing.T) {
 	if *n.AwakeCount != 2 {
 		t.Fatalf("期望 2 段清醒（窗口外与非清醒段不算），实际 %d", *n.AwakeCount)
 	}
+	// WASO = 入睡后清醒：窗口内两段 0.05 + 0.10 = 0.15 h；
+	// 22:00 那段 0.20h 在入睡前，不算（这正是它与 awake_hr 的差别）
+	if n.WasoHr == nil {
+		t.Fatal("有分段样本的夜晚 waso_hr 不应为 nil")
+	}
+	if d := *n.WasoHr - 0.15; d > 1e-9 || d < -1e-9 {
+		t.Fatalf("waso_hr 应为 0.15h，实际 %v", *n.WasoHr)
+	}
+	if rows[0].WasoHr != nil {
+		t.Fatalf("无分段样本的夜晚 waso_hr 应为 nil，实际 %v", *rows[0].WasoHr)
+	}
 }
 
 // TestSleepStagesTimeline 锁定分期时间线的口径：
