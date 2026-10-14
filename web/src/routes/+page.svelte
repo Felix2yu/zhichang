@@ -31,13 +31,28 @@
 		'heart_rate_variability'
 	];
 
-	let byName = $derived(new Map(defs.map((d) => [d.metric, d])));
-	let cards = $derived(
-		focus
-			.map((m) => items.find((i) => i.metric === m))
-			.filter((i): i is SummaryItem => Boolean(i))
-	);
-	let latestSleep = $derived(sleep.at(-1) ?? null);
+let byName = $derived(new Map(defs.map((d) => [d.metric, d])));
+// 关注的指标一律占位：本期没数据的（如这段时间没称体重）渲染成一张
+// 显示「—」的卡，而不是从网格里消失。直接过滤掉会让后面几张卡整体前移，
+// 看起来像布局错位，也让人不知道到底是「没测」还是「我们没接这个指标」。
+// 字典里没有的指标才真的不占位——那种情况下我们连它的名字和单位都不知道。
+let cards = $derived(
+	focus
+		.filter((m) => byName.has(m))
+		.map(
+			(m) =>
+				items.find((i) => i.metric === m) ?? {
+					metric: m,
+					display_name: '',
+					unit: '',
+					value: null,
+					prev_value: null,
+					delta: null,
+					delta_pct: null
+				}
+		)
+);
+let latestSleep = $derived(sleep.at(-1) ?? null);
 
 	function unitOf(metric: string): string {
 		return byName.get(metric)?.preferred_unit ?? '';
@@ -82,6 +97,12 @@
 		<div class="card px-4 py-3 text-[13px] text-[#a32d2d]">{error}</div>
 	{/if}
 
+	{#if !loading && cards.length === 0}
+		<div class="card px-4 py-3 text-[12px] text-[var(--color-ink-500)]">
+			关注的指标暂无数据，可能是还没同步，或这次导出里没有这些指标。
+		</div>
+	{/if}
+
 	<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
 		{#each cards as c (c.metric)}
 			<MetricCard
@@ -89,7 +110,11 @@
 				value={c.value}
 				unit={c.unit || unitOf(c.metric)}
 				prev={c.prev_value}
-				hint={c.prev_value !== null ? `前一日 ${formatValue(c.prev_value, c.unit)}` : ''}
+				hint={c.value === null
+					? '本期无数据'
+					: c.prev_value !== null
+						? `前一日 ${formatValue(c.prev_value, c.unit)}`
+						: ''}
 			/>
 		{/each}
 		<div class="card px-4 py-3">
@@ -98,7 +123,7 @@
 				{formatValue(latestSleep?.total_sleep_hr ?? null, 'h', 1)}
 			</div>
 			<div class="mt-0.5 text-[11px] text-[var(--color-ink-500)]">
-				{latestSleep ? `${latestSleep.local_date} · ${latestSleep.source}` : '暂无记录'}
+				{latestSleep ? `${latestSleep.local_date} · ${latestSleep.source}` : '本期无数据'}
 			</div>
 		</div>
 	</div>
