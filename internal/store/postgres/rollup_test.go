@@ -9,14 +9,15 @@ import (
 	"github.com/Felix2yu/zhichang/internal/config"
 	"github.com/Felix2yu/zhichang/internal/domain/metric"
 	"github.com/Felix2yu/zhichang/internal/domain/sample"
+	"github.com/Felix2yu/zhichang/internal/testdb"
 )
+
+// TestMain 起停本包的测试库；ZHICHANG_TEST_DSN 存在时直接用它。
+func TestMain(m *testing.M) { os.Exit(testdb.Main(m)) }
 
 func openRollupDB(t *testing.T) *DB {
 	t.Helper()
-	dsn := os.Getenv("ZHICHANG_TEST_DSN")
-	if dsn == "" {
-		t.Skip("未设置 ZHICHANG_TEST_DSN，跳过集成测试")
-	}
+	dsn := testdb.DSN(t)
 	ctx := context.Background()
 	db, err := Open(ctx, config.Config{DBDSN: dsn})
 	if err != nil {

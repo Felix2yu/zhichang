@@ -10,17 +10,17 @@ import (
 	"github.com/Felix2yu/zhichang/internal/domain/metric"
 	"github.com/Felix2yu/zhichang/internal/ingest/hae"
 	"github.com/Felix2yu/zhichang/internal/store/postgres"
+	"github.com/Felix2yu/zhichang/internal/testdb"
 )
 
-// 集成测试：需要 ZHICHANG_TEST_DSN 指向可用的 TimescaleDB。
+// TestMain 起停本包的测试库；ZHICHANG_TEST_DSN 存在时直接用它。
+func TestMain(m *testing.M) { os.Exit(testdb.Main(m)) }
+
+// 集成测试：跑在自举的 PostgreSQL 上（ZHICHANG_TEST_DSN 指向真库时优先用那个）。
 func openTestDB(t *testing.T) *postgres.DB {
 	t.Helper()
-	dsn := os.Getenv("ZHICHANG_TEST_DSN")
-	if dsn == "" {
-		t.Skip("未设置 ZHICHANG_TEST_DSN，跳过集成测试")
-	}
 	ctx := context.Background()
-	db, err := postgres.Open(ctx, config.Config{DBDSN: dsn})
+	db, err := postgres.Open(ctx, config.Config{DBDSN: testdb.DSN(t)})
 	if err != nil {
 		t.Skipf("数据库不可用: %v", err)
 	}
