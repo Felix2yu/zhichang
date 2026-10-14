@@ -8,6 +8,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/Felix2yu/zhichang/internal/domain/sample"
 )
 
 // Float 兼容数字与字符串两种数值形态，非法值视为缺失。
@@ -38,6 +40,11 @@ func (f *Float) UnmarshalJSON(b []byte) error {
 // 新版把 workouts[].source 从字符串改成对象，若按 string 解析，encoding/json 会抛
 // UnmarshalTypeError 让**整份导出**解析失败（端点回 400，一个指标都入不了库）。
 // 因此这里一律解析成纯名字：认不出的形态按空串处理，绝不让一个字段拖垮整包。
+//
+// 解析出的名字统一过 sample.CleanSource：上游用的是 NBSP 而不是普通空格
+// （实测「子翼的Apple\u00a0Watch」），不清洗的话同一台设备会分裂成两个来源，
+// 去重唯一索引也会把同一份数据放行两遍。这里是所有来源的**唯一出口**——
+// 指标点、运动、睡眠、心电的 source 都从这里来，所以清洗只做一次就全覆盖。
 type SourceName string
 
 // UnmarshalJSON 实现 json.Unmarshaler。
@@ -54,7 +61,7 @@ func (s *SourceName) UnmarshalJSON(b []byte) error {
 			*s = ""
 			return nil
 		}
-		*s = SourceName(v)
+		*s = SourceName(sample.CleanSource(v))
 	case '{':
 		var obj struct {
 			Name string `json:"name"`
@@ -63,7 +70,7 @@ func (s *SourceName) UnmarshalJSON(b []byte) error {
 			*s = ""
 			return nil
 		}
-		*s = SourceName(obj.Name)
+		*s = SourceName(sample.CleanSource(obj.Name))
 	default:
 		*s = ""
 	}

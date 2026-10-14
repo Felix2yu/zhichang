@@ -89,7 +89,7 @@ func TestNormalizeV3Workout(t *testing.T) {
 
 	// 新版形态：对象来源 + 秒级 duration + distance 字段 + kJ 能量
 	nw := res.Workouts[0]
-	if nw.Name != "户外 步行" || nw.Source != "子翼的Apple\u00a0Watch" {
+	if nw.Name != "户外 步行" || nw.Source != "子翼的Apple Watch" {
 		t.Fatalf("运动名/来源解析错误: name=%q source=%q", nw.Name, nw.Source)
 	}
 	// duration 890.47 秒 → 14.84 分钟；按分钟存的旧代码会算出 890 分钟

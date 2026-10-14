@@ -115,8 +115,8 @@ func TestIngestV3UnitsLandInDB(t *testing.T) {
 		if r.TotalEnergy == nil || math.Abs(*r.TotalEnergy-75.76221804394135) > 1e-6 || r.EnergyUnit != "kcal" {
 			t.Fatalf("新版运动能耗错误: %v %q", r.TotalEnergy, r.EnergyUnit)
 		}
-		if r.Source != "子翼的Apple\u00a0Watch" {
-			t.Fatalf("对象来源未取到 name: %q", r.Source)
+		if r.Source != "子翼的Apple Watch" {
+			t.Fatalf("对象来源未取到 name（且应归一空白）: %q", r.Source)
 		}
 		oldShape = true
 	}
