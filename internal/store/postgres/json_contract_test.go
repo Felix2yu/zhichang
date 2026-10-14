@@ -30,6 +30,11 @@ func TestEmptyRowsEncodeAsArray(t *testing.T) {
 			Watermarks:  []WatermarkRow{},
 			MissingDays: []string{},
 		}, `{"recent_runs":[],"watermarks":[],"missing_days":[]}`},
+		// 睡眠分期时间线：segments 与 totals 在无分期数据时也必须是 [] / {}
+		{"SleepStages", SleepStages{
+			Segments: []SleepStageSeg{},
+			Totals:   map[string]float64{},
+		}, `{"local_date":"","source":"","tz_offset_min":0,"has_session":false,"segments":[],"totals":{}}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

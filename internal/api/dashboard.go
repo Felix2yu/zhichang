@@ -32,6 +32,7 @@ func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/daily", d.daily)
 	r.Get("/api/samples", d.samples)
 	r.Get("/api/sleep", d.sleep)
+	r.Get("/api/sleep/stages", d.sleepStages)
 	r.Get("/api/workouts", d.workouts)
 	r.Get("/api/sources", d.sources)
 	r.Get("/api/sync/status", d.syncStatus)
@@ -128,6 +129,34 @@ func (d *Dashboard) sleep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "rows": rows})
+}
+
+// sleepStages 返回某一晚的分期时间线（hypnogram）。
+// date 缺省取「最近一晚有分期的睡眠日」，这样页面首次进来即有内容可画。
+func (d *Dashboard) sleepStages(w http.ResponseWriter, r *http.Request) {
+	date := strings.TrimSpace(r.URL.Query().Get("date"))
+	if date == "" {
+		latest, err := d.db.LatestSleepStageDate(r.Context())
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if latest == "" {
+			// 完全没有分期数据：返回零值而不是 404，前端据此显示占位提示。
+			WriteJSON(w, http.StatusOK, &postgres.SleepStages{
+				Segments: []postgres.SleepStageSeg{},
+				Totals:   map[string]float64{},
+			})
+			return
+		}
+		date = latest
+	}
+	res, err := d.db.SleepStages(r.Context(), date)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, res)
 }
 
 func (d *Dashboard) workouts(w http.ResponseWriter, r *http.Request) {
