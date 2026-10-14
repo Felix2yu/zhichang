@@ -158,6 +158,15 @@ export type WorkoutRow = {
 	distance_unit?: string;
 };
 
+/** 一条目标（单位与中文名由后端从指标字典取） */
+export type GoalRow = {
+	metric: string;
+	display_name: string;
+	unit: string;
+	target: number;
+	updated_at: string;
+};
+
 export type SourceRow = {
 	source: string;
 	device_class: string;
@@ -243,6 +252,24 @@ export const api = {
 	workouts: async (from: string, to: string) => {
 		const r = await get<{ rows: WorkoutRow[] }>(`/api/workouts?from=${from}&to=${to}`);
 		return { ...r, rows: arr(r.rows) };
+	},
+	goals: async () => {
+		const r = await get<{ goals: GoalRow[] }>('/api/goals');
+		return arr(r.goals);
+	},
+	/** 写入目标：仪表盘唯一的写接口，必须带设置令牌（服务端未配置时回 503） */
+	setGoal: async (metric: string, target: number, token: string) => {
+		const res = await fetch('/api/goals', {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+			body: JSON.stringify({ metric, target })
+		});
+		if (!res.ok) {
+			const why = res.status === 503 ? '服务端未配置 ZHICHANG_SETTINGS_TOKEN' : `${res.status}`;
+			throw new Error(`保存失败：${why}`);
+		}
+		const r = (await res.json()) as { goals: GoalRow[] };
+		return arr(r.goals);
 	},
 	sources: async () => {
 		const r = await get<{ sources: SourceRow[] }>('/api/sources');

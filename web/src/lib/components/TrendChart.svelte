@@ -25,9 +25,11 @@
 		digits?: number;
 		/** Y 轴单位标注；同组单位不一致时留空，改由 tooltip / 图例按序列显示 */
 		yUnit?: string;
+		/** 目标线：画在第一条序列上，用于「离目标还差多少」 */
+		targetLine?: { value: number; label: string } | null;
 	};
 
-	let { series, height = 280, unit = '', digits = 0, yUnit = '' }: Props = $props();
+	let { series, height = 280, unit = '', digits = 0, yUnit = '', targetLine = null }: Props = $props();
 
 	let el: HTMLDivElement | undefined = $state();
 	let chart: echarts.ECharts | undefined;
@@ -103,7 +105,24 @@
 				symbolSize: 4,
 				lineStyle: { width: 1.8 },
 				itemStyle: { color: s.color ?? palette[i % palette.length] },
-				barMaxWidth: 18
+				barMaxWidth: 18,
+				// 目标线只画一条：挂在首序列上，避免多序列重复
+				...(i === 0 && targetLine
+					? {
+							markLine: {
+								silent: true,
+								symbol: 'none',
+								lineStyle: { type: 'dashed', color: '#8a6d1f', width: 1.2 },
+								label: {
+									formatter: targetLine.label,
+									fontSize: 10,
+									color: '#8a6d1f',
+									position: 'insideEndTop'
+								},
+								data: [{ yAxis: targetLine.value }]
+							}
+						}
+					: {})
 			}))
 		};
 	}

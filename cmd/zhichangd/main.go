@@ -138,7 +138,7 @@ func serve() error {
 
 	svc := pipeline.New(db, registry, home, cfg.DedupMode)
 	ingest.New(svc, cfg.IngestToken, cfg.MaxBodyBytes, cfg.RawArchiveDir).Register(r)
-	api.NewDashboard(db, registry, home, cfg.HomeTZ).Register(r)
+	api.NewDashboard(db, registry, home, cfg.HomeTZ, cfg.SettingsToken).Register(r)
 
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		api.WriteJSON(w, http.StatusOK, map[string]any{

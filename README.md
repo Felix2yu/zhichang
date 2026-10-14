@@ -66,6 +66,7 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 | 时区 | 记录自带偏移优先，`local_date` 由自带偏移推导（服务端时区不参与入库）；库内 `timestamptz` 全 UTC；无偏移时回落 `ZHICHANG_HOME_TZ` |
 | 日内聚合 | 步数/能量/距离等累计量 `sum()`；心率/体重/HRV 等瞬时量 `mean()`；身高、VO2max 取当日 `last` |
 | 分桶 | 一律按 `local_date`（不是服务端时区），跨时区旅行/夏令时都正确 |
+| 目标（goals） | 按指标存一个期望值：`goals` 表只存数值，单位与中文名一律从 `metric_defs` 取；`PUT/DELETE /api/goals` 是全服务唯一的写接口，必须带 `ZHICHANG_SETTINGS_TOKEN`，未配置时返回 503 保持只读。睡眠页达标口径 = 范围内 `total_sleep_hr ≥ 目标` 的晚数，没有总睡眠时长的夜晚不进分母 |
 | 睡眠时间表矩阵 | 横轴是「相对 18:00 的本夜分钟轴」，与分期时间线同一把尺子（凌晨的时刻不会把行切断）；留白 = 那晚没有分段记录，由前端按日期序列补，后端只回有数据的夜晚；`/api/sleep/stages/range` 服务端截到 120 天、前端最多画 90 晚 |
 | 入睡后清醒（WASO） | 取**入睡时间窗内**清醒分段的时长合计，不含「躺下到睡着」之间的那段（那是入睡潜伏期）；与整晚清醒合计 `awake_hr` 相对，没有分段数据时不回退估算。睡眠中点由前端算：入睡与起床在「相对 18:00 的环形时刻轴」上的正中 |
 | 睡眠窗生理指标 | 夜间心率/HRV/血氧/呼吸频率按 `sleep_sessions` 的**入睡时间窗** `[sleep_start, sleep_end)` 关联样本，不按 `local_date`（样本按各自起始日归属，跨零点的后半夜会整段漏掉；取 `{睡眠日, 次日}` 两天只为走索引/裁 chunk）；**一晚只认一个来源**——会话来源优先，否则窗口内样本数最多，不跨来源平均（手表 5 分钟一条、手机低频，平均会被采样密度带偏）；无 `sleep_start` 时退到上床/离床，同晚有午睡与夜觉时取夜觉；「夜间最低」取窗口内 `value_min` 的最小，与 iPhone 睡眠详情页同口径；「最低出现时刻」用打出该最低值的样本自带偏移还原，缺偏移则不显示 |
@@ -83,6 +84,7 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 | `ZHICHANG_DEDUP_MODE` | `strict` | `strict`（按值去重）/ `latest`（同来源同起点覆盖更新） |
 | `ZHICHANG_RAW_ARCHIVE_DIR` | 空（不归档） | 原始 payload 归档目录，便于回溯 |
 | `ZHICHANG_MAX_BODY_BYTES` | `536870912` | 单次请求体上限 |
+| `ZHICHANG_SETTINGS_TOKEN` | 空（目标只读） | 目标写接口 `PUT/DELETE /api/goals` 的 Bearer 令牌；留空即不开放修改 |
 | `ZHICHANG_MCP_ENABLED` / `_TOKEN` / `_PATH` | `true` / 空 / `/mcp` | MCP over HTTP |
 | `ZHICHANG_MQTT_ENABLED` / `_BROKER` / `_TOPIC` | `false` | MQTT 旁路 |
 | `ZHICHANG_MIGRATE_ON_BOOT` | `true` | serve 启动时自动执行迁移 |
