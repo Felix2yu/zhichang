@@ -81,6 +81,9 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 | 跨设备重复 | iPhone 与 Apple Watch 的 `source` 不同，入库阶段不消除；**天级聚合时收敛**——累计量取各来源总量的 `max`，瞬时量取样本数加权 `mean` |
 | 时区 | 记录自带偏移优先，`local_date` 由自带偏移推导（服务端时区不参与入库）；库内 `timestamptz` 全 UTC；无偏移时回落 `ZHICHANG_HOME_TZ` |
 | 日内聚合 | 步数/能量/距离等累计量 `sum()`；心率/体重/HRV 等瞬时量 `mean()`；身高、VO2max 取当日 `last` |
+| 单位 | **入库时按字典 `metric_defs.unit` 换算**（能量 kJ→kcal、距离 m/mi→km、体重 lb→kg），值与单位一起改；不可换算的标签差异（`count/min` 与 `bpm`、`ml/(kg·min)` 与 `mL/min·kg`）不动。展示单位一律取字典的 `preferred_unit`，因此库里的值必须已经是字典口径——否则会出现「1255 kJ 标成 1255 kcal」这类虚高 4.18 倍且界面上看不出错的数值 |
+| 运动记录 | 时长一律存分钟（`duration_min`），距离统一 km、能耗统一 kcal。HAE 老版本 `duration` 给分钟、新版本给秒且无单位标记，按「隐含时长更接近 `end-start`」判定；距离字段新版叫 `distance`、老版叫 `totalDistance`，取有值的那个 |
+| 上游字段容错 | 解析层对 `source`（字符串或 `{name, identifier}` 对象）与数量字段（对象/裸数值/数组）一律容错，认不出按缺失处理——**绝不允许单个字段的形态变化导致整份导出 400**。HAE 换过 `workouts[].source` 的形态，按字符串解析会让 34 个指标一条都入不了库 |
 | 分桶 | 一律按 `local_date`（不是服务端时区），跨时区旅行/夏令时都正确 |
 | 目标（goals） | 按指标存一个期望值：`goals` 表只存数值，单位与中文名一律从 `metric_defs` 取；`PUT/DELETE /api/goals` 是全服务唯一的写接口，必须带 `ZHICHANG_SETTINGS_TOKEN`，未配置时返回 503 保持只读。睡眠页达标口径 = 范围内 `total_sleep_hr ≥ 目标` 的晚数，没有总睡眠时长的夜晚不进分母 |
 | 睡眠时间表矩阵 | 横轴是「相对 18:00 的本夜分钟轴」，与分期时间线同一把尺子（凌晨的时刻不会把行切断）；留白 = 那晚没有分段记录，由前端按日期序列补，后端只回有数据的夜晚；`/api/sleep/stages/range` 服务端截到 120 天、前端最多画 90 晚 |
