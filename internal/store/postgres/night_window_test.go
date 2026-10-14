@@ -44,6 +44,7 @@ func TestNightWindow(t *testing.T) {
 func TestAssembleNightSegments(t *testing.T) {
 	// 窗口：23:30 入睡 → 07:00 起床
 	const lo, hi = 1410, 1860
+	nightDay := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
 
 	raw := []rawSeg{
 		segAt(-10, 30, "Apple Watch", "AsleepCore"), // 10-12 23:50 → 本夜轴 1430
@@ -54,7 +55,7 @@ func TestAssembleNightSegments(t *testing.T) {
 		segAt(60, 0, "Apple Watch", "AsleepCore"),   // 零时长：排除
 	}
 
-	segs, totals, src := assembleNightSegments(raw, lo, hi, "Apple Watch")
+	segs, totals, src := assembleNightSegments(raw, lo, hi, "Apple Watch", nightDay)
 	if src != "Apple Watch" {
 		t.Fatalf("会话来源应优先，实际 %q", src)
 	}
@@ -78,12 +79,25 @@ func TestAssembleNightSegments(t *testing.T) {
 	}
 
 	// 首选来源不在候选里：退回覆盖率最高的来源
-	if _, _, src2 := assembleNightSegments(raw, lo, hi, "Whoop"); src2 != "Apple Watch" {
+	if _, _, src2 := assembleNightSegments(raw, lo, hi, "Whoop", nightDay); src2 != "Apple Watch" {
 		t.Fatalf("应按覆盖率择优，实际 %q", src2)
 	}
 
+	// 宽窗口（无会话或入睡晚于 18:00 锚点时的真实窗口 [1080, 1860]）：
+	// 次日 20:00 的墙钟是 1200，正好落进这个窗口——只按墙钟试两个候选值就会把
+	// 次日那觉当成当晚 20:00 收进来。必须靠样本真实落在的第几天排除它。
+	wideSegs, _, _ := assembleNightSegments(raw, 1080, 1860, "Apple Watch", nightDay)
+	for _, s := range wideSegs {
+		if s.Raw == "AsleepREM" {
+			t.Fatalf("次日晚 20:00 的 REM 不该出现在当晚时间线上：%+v", s)
+		}
+	}
+	if len(wideSegs) != 2 { // 仍只有 core@1430 与 deep@1620
+		t.Fatalf("宽窗口下应有 2 段，实际 %d：%+v", len(wideSegs), wideSegs)
+	}
+
 	// 空输入也必须给非 nil 的 slice 与 map（JSON 契约：[] 而不是 null）
-	e, et, es := assembleNightSegments(nil, lo, hi, "Apple Watch")
+	e, et, es := assembleNightSegments(nil, lo, hi, "Apple Watch", nightDay)
 	if e == nil || et == nil {
 		t.Fatalf("空结果不能是 nil：%v / %v", e, et)
 	}

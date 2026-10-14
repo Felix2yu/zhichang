@@ -406,7 +406,7 @@ func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error
 		return nil, err
 	}
 
-	segs, totals, src := assembleNightSegments(raw, winStart, winEnd, out.Source)
+	segs, totals, src := assembleNightSegments(raw, winStart, winEnd, out.Source, d.Time.UTC().Truncate(24*time.Hour))
 	out.Segments = segs
 	out.Totals = totals
 	if src != "" {
@@ -475,10 +475,12 @@ func nightWindow(sessStart, sessEnd *time.Time, tzOffsetMin int) (int, int) {
 
 // assembleNightSegments 把原始分段映射到本夜轴、裁进窗口，并按来源择优出一晚的序列。
 //
-// 墙钟分钟要落到窗口内：凌晨的 03:00 在本夜轴上是 180+1440，
-// 因此两个候选值（当日 / 次日）里取落在窗口内的那个。
+// nightDay 是睡眠日的 UTC 零点（不是次日）。定位必须靠样本真实落在的第几天：
+// 窗口起点是 18:00 这个粗锚点（要留出入睡前的在床段），所以次日 20:00 的墙钟
+// 分钟数会正好落进当晚窗口内——只按墙钟试 [wall, wall+1440] 两个值的话，
+// 次日那觉会被当成当晚 20:00 收进来。
 // 多来源择优：会话来源优先（手表分期比 iPhone 细，且与会话口径一致），否则取覆盖率最高的来源。
-func assembleNightSegments(raw []rawSeg, winStart, winEnd int, preferSource string) ([]SleepStageSeg, map[string]float64, string) {
+func assembleNightSegments(raw []rawSeg, winStart, winEnd int, preferSource string, nightDay time.Time) ([]SleepStageSeg, map[string]float64, string) {
 	type cand struct {
 		SleepStageSeg
 		source string
@@ -487,15 +489,10 @@ func assembleNightSegments(raw []rawSeg, winStart, winEnd int, preferSource stri
 	totals := make(map[string]float64, 6)
 	coverBySource := map[string]float64{}
 	for _, s := range raw {
-		wall := localMinute(s.Start, s.TZ)
-		startMin := -1
-		for _, m := range [2]int{wall, wall + 24*60} {
-			if m >= winStart && m <= winEnd {
-				startMin = m
-				break
-			}
-		}
-		if startMin < 0 {
+		// 本夜轴：睡眠日本地 00:00 为 0，按样本真实落在的第几天顺延。
+		localDay := s.Start.UTC().Add(time.Duration(s.TZ) * time.Minute).Truncate(24 * time.Hour)
+		startMin := int(localDay.Sub(nightDay).Hours()/24)*24*60 + localMinute(s.Start, s.TZ)
+		if startMin < winStart || startMin > winEnd {
 			continue
 		}
 		durMin := s.End.Sub(s.Start).Minutes()
@@ -663,7 +660,7 @@ func (db *DB) SleepStagesRange(ctx context.Context, from, to string) ([]NightSta
 		}
 		sess := sessByDate[day]
 		winStart, winEnd := nightWindow(sess.start, sess.end, sess.tz)
-		segs, _, src := assembleNightSegments(raw, winStart, winEnd, sess.source)
+		segs, _, src := assembleNightSegments(raw, winStart, winEnd, sess.source, day)
 		if len(segs) == 0 {
 			continue
 		}
