@@ -261,7 +261,7 @@ func (d *Deps) Latest(ctx context.Context, raw string) (string, error) {
 	return b.String(), nil
 }
 
-// Sleep 输出睡眠记录。
+// Sleep 输出睡眠记录（含按入睡时间窗关联的夜间心率）。
 func (d *Deps) Sleep(ctx context.Context, from, to string) (string, error) {
 	if from == "" {
 		from = d.shift(-29)
@@ -276,17 +276,173 @@ func (d *Deps) Sleep(ctx context.Context, from, to string) (string, error) {
 	if len(rows) == 0 {
 		return fmt.Sprintf("%s ~ %s 没有睡眠记录", from, to), nil
 	}
+	// 夜间心率按「入睡时间窗」关联，不按 local_date：跨零点的后半夜样本
+	// 归属次日，按日期取会把最低值整段漏掉。
+	hr := map[string]postgres.NightMetricRow{}
+	if nm, err := d.DB.SleepNightMetrics(ctx, from, to, []string{"heart_rate"}); err == nil {
+		for _, r := range nm {
+			hr[r.LocalDate] = r
+		}
+	}
 	var b strings.Builder
 	total := 0.0
 	b.WriteString(fmt.Sprintf("睡眠 %s ~ %s（%d 天）\n", from, to, len(rows)))
-	b.WriteString("| 日期 | 总睡眠(h) | 深睡 | 核心 | REM | 在床 | 来源 |\n|---|---|---|---|---|---|---|\n")
+	b.WriteString("| 日期 | 总睡眠(h) | 深睡 | 核心 | REM | 在床 | 夜间最低心率 | 来源 |\n|---|---|---|---|---|---|---|---|\n")
 	for _, r := range rows {
 		total += ptr(r.TotalSleepHr)
-		b.WriteString(fmt.Sprintf("| %s | %.1f | %.1f | %.1f | %.1f | %.1f | %s |\n",
-			r.LocalDate, ptr(r.TotalSleepHr), ptr(r.DeepHr), ptr(r.CoreHr), ptr(r.RemHr), ptr(r.InBedHr), r.Source))
+		nightHr := "—"
+		if v, ok := hr[r.LocalDate]; ok {
+			nightHr = fmt.Sprintf("%.0f bpm", v.Min)
+		}
+		b.WriteString(fmt.Sprintf("| %s | %.1f | %.1f | %.1f | %.1f | %.1f | %s | %s |\n",
+			r.LocalDate, ptr(r.TotalSleepHr), ptr(r.DeepHr), ptr(r.CoreHr), ptr(r.RemHr), ptr(r.InBedHr),
+			nightHr, r.Source))
 	}
 	b.WriteString(fmt.Sprintf("\n日均总睡眠 %.1f 小时\n", total/float64(len(rows))))
+	b.WriteString("逐晚分期时间线与夜间心率明细：用 health_sleep_detail 传睡眠日查询")
 	return b.String(), nil
+}
+
+// stageLabels 是归一化阶段键的中文名（与前端 sleep-stages 同一套键）。
+var stageLabels = map[string]string{
+	"awake":  "清醒",
+	"rem":    "REM",
+	"core":   "核心",
+	"deep":   "深睡",
+	"asleep": "睡眠",
+	"inbed":  "在床",
+	"other":  "其他",
+}
+
+// nightClock 把「本夜轴分钟」（睡眠日本地 00:00 起算，跨零点顺延）写成钟点。
+func nightClock(min float64) string {
+	m := int(math.Round(min)) % 1440
+	if m < 0 {
+		m += 1440
+	}
+	return fmt.Sprintf("%02d:%02d", m/60, m%60)
+}
+
+// localClock 把 UTC RFC3339 时刻按记录自带偏移还原成本地钟点。
+func localClock(rfc string, tzOffsetMin int) string {
+	if rfc == "" {
+		return "—"
+	}
+	t, err := time.Parse(time.RFC3339, rfc)
+	if err != nil {
+		return "—"
+	}
+	return t.Add(time.Duration(tzOffsetMin) * time.Minute).UTC().Format("15:04")
+}
+
+// SleepDetail 输出某一晚的详情：时刻、分期占比、逐段时间线、窗口内的生理指标。
+//
+// 分期与生理指标都按入睡时间窗关联（见 SleepStages / SleepNightMetrics 的口径），
+// 所以凌晨那半段既在时间线上，也在夜间心率的统计窗口里。
+func (d *Deps) SleepDetail(ctx context.Context, date string) (string, error) {
+	if date == "" {
+		date = d.today()
+	}
+	st, err := d.DB.SleepStages(ctx, date)
+	if err != nil {
+		return "", err
+	}
+	sessions, err := d.DB.SleepRange(ctx, date, date)
+	if err != nil {
+		return "", err
+	}
+	nm, err := d.DB.SleepNightMetrics(ctx, date, date, nil)
+	if err != nil {
+		return "", err
+	}
+
+	// 同一晚可能有多来源会话：取时长最长的那条，信息最完整
+	var sess *postgres.SleepRow
+	for i := range sessions {
+		if sess == nil || ptr(sessions[i].TotalSleepHr) > ptr(sess.TotalSleepHr) {
+			sess = &sessions[i]
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("睡眠详情 %s\n", date))
+	if st.SleepStart != nil && st.SleepEnd != nil {
+		b.WriteString(fmt.Sprintf("- 入睡 %s → 起床 %s（tz %+d 分钟）\n",
+			localClock(*st.SleepStart, st.TZOffsetMin), localClock(*st.SleepEnd, st.TZOffsetMin), st.TZOffsetMin))
+	} else if sess != nil && sess.SleepStart != nil && sess.SleepEnd != nil {
+		b.WriteString(fmt.Sprintf("- 入睡 %s → 起床 %s\n",
+			localClock(*sess.SleepStart, sess.TZOffsetMin), localClock(*sess.SleepEnd, sess.TZOffsetMin)))
+	} else {
+		b.WriteString("- 这一晚没有入睡/起床时刻记录\n")
+	}
+	if sess != nil {
+		b.WriteString(fmt.Sprintf("- 时长：总睡眠 %.1fh · 深睡 %.1fh · 核心 %.1fh · REM %.1fh · 在床 %.1fh\n",
+			ptr(sess.TotalSleepHr), ptr(sess.DeepHr), ptr(sess.CoreHr), ptr(sess.RemHr), ptr(sess.InBedHr)))
+		if sess.InBedStart != nil && sess.SleepStart != nil {
+			if inBed, e1 := time.Parse(time.RFC3339, *sess.InBedStart); e1 == nil {
+				if asleep, e2 := time.Parse(time.RFC3339, *sess.SleepStart); e2 == nil {
+					b.WriteString(fmt.Sprintf("- 入睡潜伏期 %.0f 分钟\n", asleep.Sub(inBed).Minutes()))
+				}
+			}
+		}
+		if sess.WasoHr != nil {
+			n := ""
+			if sess.AwakeCount != nil {
+				n = fmt.Sprintf(" · %d 次", *sess.AwakeCount)
+			}
+			b.WriteString(fmt.Sprintf("- 入睡后清醒 %.0f 分钟%s（不含入睡前那段）\n", ptr(sess.WasoHr)*60, n))
+		} else if sess.AwakeHr != nil {
+			b.WriteString(fmt.Sprintf("- 整晚清醒 %.0f 分钟（导出未含分段，无法区分入睡前/后）\n", ptr(sess.AwakeHr)*60))
+		}
+	}
+
+	if len(st.Segments) == 0 {
+		b.WriteString("- 分期时间线：无（导出端需在 sleep_analysis 里带上分段）\n")
+	} else {
+		b.WriteString(fmt.Sprintf("- 分期时间线（%d 段，来源 %s）：\n", len(st.Segments), st.Source))
+		for _, s := range st.Segments {
+			label := stageLabels[s.Stage]
+			if label == "" {
+				label = s.Stage
+			}
+			b.WriteString(fmt.Sprintf("  %s–%s %s（%.0f 分）\n",
+				nightClock(float64(s.LocalMin)), nightClock(float64(s.LocalMin)+s.DurationMin), label, s.DurationMin))
+		}
+	}
+
+	if len(nm) == 0 {
+		b.WriteString("- 夜间生理指标：入睡窗口内没有样本")
+	} else {
+		b.WriteString("- 夜间生理指标（入睡窗口内）：")
+		for i, r := range nm {
+			if i > 0 {
+				b.WriteString("；")
+			}
+			unit := r.Unit
+			if unit == "count/min" {
+				unit = "bpm"
+			}
+			tz := 0
+			if r.MinAtTZOffsetMin != nil {
+				tz = *r.MinAtTZOffsetMin
+			}
+			minAt := ""
+			if r.MinAt != "" {
+				minAt = fmt.Sprintf("，%s 出现", localClock(r.MinAt, tz))
+			}
+			b.WriteString(fmt.Sprintf("%s 最低 %.0f%s · 平均 %.0f%s · %d 点 · 来源 %s%s",
+				metricLabel(d, r.Metric), r.Min, " "+unit, r.Avg, " "+unit, r.SampleCount, r.Source, minAt))
+		}
+	}
+	return b.String(), nil
+}
+
+// metricLabel 取指标字典里的中文名，取不到就原样返回。
+func metricLabel(d *Deps, metric string) string {
+	if def, ok := d.Metrics.Get(metric); ok && def.DisplayNameZH != "" {
+		return def.DisplayNameZH
+	}
+	return metric
 }
 
 // Workouts 输出运动记录。

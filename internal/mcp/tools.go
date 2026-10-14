@@ -65,12 +65,22 @@ func New(deps *Deps) *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "health_sleep",
-		Description: "查询区间内的睡眠记录：总时长、深睡/核心/REM 分期、在床时长",
+		Description: "查询区间内的睡眠记录：总时长、深睡/核心/REM 分期、在床时长、夜间最低心率（按入睡时间窗关联）",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 		From string `json:"from,omitempty" jsonschema:"起始日期 YYYY-MM-DD，默认 30 天前"`
 		To   string `json:"to,omitempty" jsonschema:"结束日期 YYYY-MM-DD，默认今天"`
 	}) (*mcp.CallToolResult, Result, error) {
 		return textResult(deps.Sleep(ctx, in.From, in.To))
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "health_sleep_detail",
+		Description: "查询某一晚的睡眠详情：入睡/起床时刻、入睡潜伏期、入睡后清醒（WASO）、" +
+			"逐段分期时间线、窗口内的夜间心率/HRV/血氧/呼吸频率。date 传睡眠日（入睡时刻那天的日期）",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		Date string `json:"date,omitempty" jsonschema:"睡眠日 YYYY-MM-DD（以入睡时刻归属），默认今天"`
+	}) (*mcp.CallToolResult, Result, error) {
+		return textResult(deps.SleepDetail(ctx, in.Date))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
