@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/Felix2yu/zhichang/internal/domain/ecg"
 	"github.com/Felix2yu/zhichang/internal/store/postgres"
@@ -43,4 +45,27 @@ func (d *Dashboard) ecgRecords(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"from": from, "to": to, "timezone": d.tzName, "records": out,
 	})
+}
+
+// ecgWaveform 返回一条记录的电压波形。
+//
+// 单列一条接口而不是塞进列表里：一次测量 15360 个点（约 120KB），
+// 而列表页只是给人扫一眼「哪天测了、结论是什么」。
+func (d *Dashboard) ecgWaveform(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimSpace(r.URL.Query().Get("id"))
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		WriteError(w, http.StatusBadRequest, "id 缺失或非法")
+		return
+	}
+	wf, err := d.db.ECGVoltages(r.Context(), id)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if wf == nil {
+		WriteError(w, http.StatusNotFound, "心电图记录不存在")
+		return
+	}
+	WriteJSON(w, http.StatusOK, wf)
 }

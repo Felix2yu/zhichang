@@ -1,12 +1,20 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, shiftDays, todayStr, type EcgRecord } from '#lib/api';
+	import { api, shiftDays, todayStr, type EcgRecord, type EcgWaveform } from '#lib/api';
 	import RangePicker from '#lib/components/RangePicker.svelte';
+	import EcgStripChart from '#lib/components/EcgStripChart.svelte';
 
 	let days = $state(90);
 	let records = $state<EcgRecord[]>([]);
 	let loading = $state(true);
 	let error = $state('');
+
+	// 波形按需加载：一次测量 15360 个点（约 120KB），
+	// 列表页不该为了「可能有人点」就把每一次的波形都拉下来。
+	let selected = $state<EcgRecord | null>(null);
+	let waveform = $state<EcgWaveform | null>(null);
+	let waveLoading = $state(false);
+	let waveError = $state('');
 
 	let latest = $derived(records[0] ?? null);
 	let avgHr = $derived.by(() => {
@@ -31,10 +39,26 @@
 			const r = await api.ecg(shiftDays(-days + 1, to), to);
 			records = r.records;
 			error = '';
+			await select(records[0] ?? null);
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function select(rec: EcgRecord | null) {
+		selected = rec;
+		waveform = null;
+		waveError = '';
+		if (!rec) return;
+		waveLoading = true;
+		try {
+			waveform = await api.ecgWaveform(rec.id);
+		} catch (e) {
+			waveError = e instanceof Error ? e.message : String(e);
+		} finally {
+			waveLoading = false;
 		}
 	}
 
@@ -49,6 +73,18 @@
 		const p = (n: number) => String(n).padStart(2, '0');
 		return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 	}
+
+	let waveStats = $derived.by(() => {
+		const v = waveform?.voltages ?? [];
+		if (v.length === 0) return null;
+		let min = v[0];
+		let max = v[0];
+		for (const x of v) {
+			if (x < min) min = x;
+			if (x > max) max = x;
+		}
+		return { min, max, peakToPeak: max - min };
+	});
 </script>
 
 <div class="space-y-4">
@@ -110,7 +146,12 @@
 			</thead>
 			<tbody>
 				{#each records as r (r.id)}
-					<tr class="border-t border-[var(--color-line)]">
+					<tr
+						class="cursor-pointer border-t border-[var(--color-line)] transition-colors {selected?.id === r.id
+							? 'bg-[var(--color-brand-soft)]/60'
+							: 'hover:bg-[#fafbfc]'}"
+						onclick={() => select(r)}
+					>
 						<td class="num px-4 py-2">{fmtTime(r.start, r.tz_offset_min)}</td>
 						<td class="px-4 py-2">
 							<!-- 归一没认出来的判定照原样展示，并标注它的来路，别让人误以为是我们的措辞 -->
@@ -140,4 +181,46 @@
 			</tbody>
 		</table>
 	</div>
+
+	{#if selected}
+		<div class="card p-4">
+			<div class="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+				<div class="text-[13px] font-medium">
+					波形
+					<span class="num text-[12px] font-normal text-[var(--color-ink-500)]">
+						{fmtTime(selected.start, selected.tz_offset_min)} · {selected.classification_label || '（未给判定）'}
+					</span>
+				</div>
+				{#if waveform && waveStats}
+					<div class="num flex flex-wrap gap-x-4 text-[12px] text-[var(--color-ink-500)]">
+						<span>{waveform.voltages.length} 点</span>
+						<span>{waveform.duration_sec.toFixed(1)} 秒</span>
+						{#if waveform.sampling_frequency}
+							<span>{waveform.sampling_frequency} Hz</span>
+						{/if}
+						{#if waveform.unit}
+							<span>单位 {waveform.unit}</span>
+						{/if}
+						<span>峰-峰 {waveStats.peakToPeak.toFixed(1)}</span>
+						<span>最低 {waveStats.min.toFixed(1)} / 最高 {waveStats.max.toFixed(1)}</span>
+					</div>
+				{/if}
+			</div>
+			{#if waveLoading}
+				<div class="py-8 text-center text-[13px] text-[var(--color-ink-500)]">波形加载中…</div>
+			{:else if waveError}
+				<div class="py-3 text-[13px] text-[#a32d2d]">{waveError}</div>
+			{:else if waveform && waveform.voltages.length > 0}
+				<EcgStripChart
+					voltages={waveform.voltages}
+					unit={waveform.unit}
+					samplingFrequency={waveform.sampling_frequency ?? null}
+				/>
+			{:else}
+				<div class="py-8 text-center text-[13px] text-[var(--color-ink-500)]">
+					这条记录没有波形数据（本次导出只带了判定与心率）
+				</div>
+			{/if}
+		</div>
+	{/if}
 </div>

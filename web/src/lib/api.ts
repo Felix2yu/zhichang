@@ -167,7 +167,7 @@ export type GoalRow = {
 	updated_at: string;
 };
 
-/** 一条心电记录 */
+/** 一条心电记录（不含波形：波形单独一条接口） */
 export type EcgRecord = {
 	id: number;
 	local_date: string;
@@ -188,6 +188,20 @@ export type EcgRecord = {
 	voltage_count: number;
 	source: string;
 	tz_offset_min: number;
+};
+
+/** 一条记录的电压波形 */
+export type EcgWaveform = {
+	id: number;
+	/** UTC RFC3339 */
+	start: string;
+	/** 上游写的单位，原样展示（HAE 实测给的是 mcV） */
+	unit: string;
+	sampling_frequency?: number;
+	/** 由点数与采样率推出的时间跨度（秒） */
+	duration_sec: number;
+	/** 按时间升序的电压值，第 i 点即 start + i/采样率 */
+	voltages: number[];
 };
 
 export type SourceRow = {
@@ -281,6 +295,10 @@ export const api = {
 			`/api/ecg?from=${from}&to=${to}`
 		);
 		return { ...r, records: arr(r.records) };
+	},
+	ecgWaveform: async (id: number) => {
+		const r = await get<EcgWaveform>(`/api/ecg/waveform?id=${id}`);
+		return { ...r, voltages: arr(r.voltages) };
 	},
 	goals: async () => {
 		const r = await get<{ goals: GoalRow[] }>('/api/goals');

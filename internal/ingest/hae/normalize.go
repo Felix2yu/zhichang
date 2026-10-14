@@ -320,12 +320,35 @@ func normalizeECG(e ECG, home *time.Location) (sample.ECGRecord, bool) {
 		v := int(e.SamplingFrequency.Value)
 		out.SamplingFrequency = &v
 	}
-	// 本版只落元数据、不解析波形，所以点数记上游声明的 numberOfVoltageMeasurements，
-	// 供列表页显示「这次测量带了多少个采样点」。
-	if e.NumberOfVoltageMeasurements.Set {
-		out.VoltageCount = int(e.NumberOfVoltageMeasurements.Value)
-	}
+	out.VoltageUnit, out.Voltages = collectVoltages(e.VoltageMeasurements)
+	out.VoltageCount = len(out.Voltages)
 	return out, true
+}
+
+// collectVoltages 取出电压序列与单位。
+//
+// 两条硬约定：
+//   - 单位取第一个有单位的点，且**不换算**。逐点重复写单位只是上游的冗余写法，
+//     真出现分歧说明数据本身有问题，此时猜一个换算系数比保留原样更危险。
+//   - 只要有一个点缺电压，整段波形就都不入库（记录照常保留）。因为时轴是按
+//     索引推的（第 i 点 = start + i/fs），中间少一个点，后面的点全部错位，
+//     画出来是一条时间轴错的波形——宁可不画，也不能画错。
+func collectVoltages(pts []VoltageMeasurement) (string, []float64) {
+	if len(pts) == 0 {
+		return "", nil
+	}
+	unit := ""
+	out := make([]float64, 0, len(pts))
+	for _, p := range pts {
+		if unit == "" {
+			unit = p.Units
+		}
+		if !p.Voltage.Set {
+			return unit, nil
+		}
+		out = append(out, p.Voltage.Value)
+	}
+	return unit, out
 }
 
 // pickValue 按字典声明的字段取值。

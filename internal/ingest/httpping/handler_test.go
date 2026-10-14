@@ -72,7 +72,7 @@ func newEnv(t *testing.T) *env {
 
 func truncateAll(t *testing.T, ctx context.Context, db *postgres.DB) {
 	t.Helper()
-	const q = `TRUNCATE samples, workouts, sleep_sessions, ecg_records, ingest_runs, rollup_queue, sync_watermark, sources, daily_metrics, daily_metrics_day`
+	const q = `TRUNCATE samples, workouts, sleep_sessions, ecg_records, ecg_voltages, ingest_runs, rollup_queue, sync_watermark, sources, daily_metrics, daily_metrics_day`
 	if _, err := db.Pool.Exec(ctx, q); err != nil {
 		t.Fatalf("清理失败: %v", err)
 	}
@@ -885,13 +885,13 @@ func TestIngestNewExportShapeIsNotBadRequest(t *testing.T) {
 	}
 }
 
-// 心电图整条链路：解析（source 是对象）→ 归一（本地化判定收敛成稳定码）
-// → 落记录表 → 响应回报 ecg 计数。
+// 心电图整条链路：解析（source 是对象、电压带 mcV 单位）→ 归一（本地化判定
+// 收敛成稳定码）→ 落记录表 + 波形表 → 响应回报 ecg 计数。
 //
 // 这条路径在此之前是完全缺失的：payload 结构体里根本没有 ecg 字段，
 // json.Decode 默认忽略未知字段，于是 9 条记录连同判定结果在解析第一步就
 // 静默消失——不报错、不提示、日志一片干净。
-func TestIngestECGRecords(t *testing.T) {
+func TestIngestECGRecordsAndWaveform(t *testing.T) {
 	e := newEnv(t)
 	h := New(e.svc, testToken, 0, "")
 
@@ -916,7 +916,7 @@ func TestIngestECGRecords(t *testing.T) {
 		t.Fatalf("不该跳过任何记录，实际 %d", got.Skipped)
 	}
 
-	var class, code string
+	var class, code, unit string
 	var avgHR float64
 	var fs, n int
 	if err := e.db.Pool.QueryRow(e.ctx,
@@ -932,6 +932,22 @@ func TestIngestECGRecords(t *testing.T) {
 	}
 	if avgHR != 66 || fs != 512 || n != 5 {
 		t.Fatalf("心率/采样率/点数错误: %v %d %d", avgHR, fs, n)
+	}
+
+	var voltages []float64
+	if err := e.db.Pool.QueryRow(e.ctx,
+		`SELECT unit, voltages FROM ecg_voltages`).Scan(&unit, &voltages); err != nil {
+		t.Fatalf("波形未入库: %v", err)
+	}
+	if unit != "mcV" {
+		t.Fatalf("电压单位应原样保留 mcV，实际 %q", unit)
+	}
+	if len(voltages) != 5 {
+		t.Fatalf("波形应有 5 点，实际 %d", len(voltages))
+	}
+	// 浮点必须原样往返，任何按 float32 落库的实现都会在这里露馅
+	if voltages[0] != -63.284713745117188 || voltages[4] != 407.3128662109375 {
+		t.Fatalf("电压值被截断: %v ~ %v", voltages[0], voltages[4])
 	}
 
 	// 心电图是事件数据，不该在天级聚合里留下任何东西
