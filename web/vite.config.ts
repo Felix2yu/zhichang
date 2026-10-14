@@ -3,7 +3,9 @@ import adapter from '@sveltejs/adapter-static';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
-const backend = process.env.ZHICHANG_BACKEND ?? 'http://127.0.0.1:8899';
+// 与 make run / compose 的服务端口契约一致（ZHICHANG_HTTP_ADDR 默认 :8787）；
+// 后端跑在别的端口时用 ZHICHANG_BACKEND=http://127.0.0.1:<port> 覆盖
+const backend = process.env.ZHICHANG_BACKEND ?? 'http://127.0.0.1:8787';
 
 export default defineConfig({
 	plugins: [

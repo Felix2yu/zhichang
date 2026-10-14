@@ -40,6 +40,7 @@ make migrate seed doctor
 # 3) 起服务（前端另开一个终端）
 make run                                   # :8787
 cd web && pnpm dev                          # :5173，已代理 /api 到 8787
+# 后端跑在别的端口时：ZHICHANG_BACKEND=http://127.0.0.1:<port> pnpm dev
 ```
 
 生产构建用 `make`（先构建前端再编译 Go，前端产物经 `embed` 打进二进制）。
@@ -81,6 +82,7 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 | `ZHICHANG_MAX_BODY_BYTES` | `536870912` | 单次请求体上限 |
 | `ZHICHANG_MCP_ENABLED` / `_TOKEN` / `_PATH` | `true` / 空 / `/mcp` | MCP over HTTP |
 | `ZHICHANG_MQTT_ENABLED` / `_BROKER` / `_TOPIC` | `false` | MQTT 旁路 |
+| `ZHICHANG_MIGRATE_ON_BOOT` | `true` | serve 启动时自动执行迁移 |
 | `ZHICHANG_LOG_LEVEL` | `info` | 日志级别 |
 | `PUID` / `PGID` | `1000` | 容器内运行身份（Docker） |
 
