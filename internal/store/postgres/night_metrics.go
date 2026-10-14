@@ -99,7 +99,7 @@ func (db *DB) SleepNightMetrics(ctx context.Context, from, to string, metrics []
 	rows, err := db.Pool.Query(ctx, nightSessionCTE+`,
 		pts AS (
 			SELECT n.local_date, n.source AS session_source, n.win_start, n.win_end,
-				p.metric, p.source, p.start_time, p.value, p.value_min, p.value_max, p.unit
+				p.metric, p.source, p.start_time, p.value, p.value_min, p.value_max, p.unit, p.tz_offset_min
 			FROM night n
 			JOIN samples p
 			  ON p.metric = ANY($3)
