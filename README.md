@@ -45,6 +45,22 @@ cd web && pnpm dev                          # :5173，已代理 /api 到 8787
 
 生产构建用 `make`（先构建前端再编译 Go，前端产物经 `embed` 打进二进制）。
 
+## 测试
+
+```bash
+make test    # 单元 + 集成测试
+make cover   # 按全仓语句口径汇总覆盖率
+```
+
+集成测试打的是真库：`internal/testdb` 在测试进程里自举一个 PostgreSQL 18
+（embedded-postgres，首次运行下载发行包约 30MB，之后离线可跑），**不需要 docker**。
+
+口径差异要说清：基座建 schema 时会跳过 `0001` 里 `CREATE EXTENSION timescaledb` 和
+`create_hypertable` 这两条，所以测试库里 `samples` 是普通表而不是 hypertable——
+chunk 裁剪、压缩策略那类分区行为不在覆盖范围内（它们本来也不由这些查询决定）。
+查询侧不依赖任何 TimescaleDB 专有函数（全仓没有 `time_bucket`），所以 SQL 语义与生产一致。
+要把这一层也压上真库，设 `ZHICHANG_TEST_DSN` 指向一个可用的 TimescaleDB，此时完全不走自举路径。
+
 ## 数据接入
 
 详见 [docs/hae-setup.md](docs/hae-setup.md)。要点：
