@@ -36,14 +36,50 @@ export type SummaryItem = {
 export type SleepRow = {
 	local_date: string;
 	source: string;
+	/** UTC RFC3339 */
 	sleep_start?: string;
+	/** UTC RFC3339 */
 	sleep_end?: string;
 	total_sleep_hr?: number;
 	asleep_hr?: number;
 	core_hr?: number;
 	deep_hr?: number;
 	rem_hr?: number;
+	/** 夜间清醒总时长（小时） */
+	awake_hr?: number;
 	in_bed_hr?: number;
+	/** 本地时区偏移（分钟），用于把 sleep_start 还原成本地入睡时刻 */
+	tz_offset_min?: number;
+	/** 夜间清醒「段数」；仅当导出含睡眠分段数据时才有值 */
+	awake_count?: number;
+};
+
+export type SleepStageSeg = {
+	/** UTC RFC3339 */
+	start: string;
+	/** UTC RFC3339 */
+	end: string;
+	/** 归一化后的阶段键：awake/rem/core/deep/asleep/inbed/other */
+	stage: string;
+	/** 原始 stage 文本，便于排查上游写法 */
+	raw: string;
+	source: string;
+	/** 该段起点在本夜时间轴上的位置（分钟），以睡眠日本地 00:00 为 0，跨零点顺延 */
+	local_min: number;
+	/** 该段时长（分钟） */
+	duration_min: number;
+};
+
+export type SleepStages = {
+	local_date?: string;
+	source?: string;
+	tz_offset_min?: number;
+	has_session?: boolean;
+	sleep_start?: string;
+	sleep_end?: string;
+	segments: SleepStageSeg[];
+	/** 各阶段合计小时数 */
+	totals: Record<string, number>;
 };
 
 export type WorkoutRow = {
@@ -126,6 +162,11 @@ export const api = {
 	sleep: async (from: string, to: string) => {
 		const r = await get<{ rows: SleepRow[] }>(`/api/sleep?from=${from}&to=${to}`);
 		return { ...r, rows: arr(r.rows) };
+	},
+	sleepStages: async (date?: string) => {
+		const q = date ? `?date=${date}` : '';
+		const r = await get<SleepStages>(`/api/sleep/stages${q}`);
+		return { ...r, segments: arr(r.segments), totals: r.totals ?? {} };
 	},
 	workouts: async (from: string, to: string) => {
 		const r = await get<{ rows: WorkoutRow[] }>(`/api/workouts?from=${from}&to=${to}`);
