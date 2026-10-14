@@ -12,6 +12,7 @@
 	import { STAGE_META, stageMeta } from '#lib/sleep-stages';
 	import {
 		computeRhythm,
+		coverageStats,
 		efficiencyBand,
 		summarizeStructure,
 		wakeClock,
@@ -186,6 +187,8 @@
 	let rhythmLanes = $derived(rhythm.byWeekday.filter((w) => w.nights > 0 && w.bedtimeMin !== null));
 	let structure = $derived(summarizeStructure(rows as RhythmNight[]));
 	let effBand = $derived(efficiencyBand(structure.efficiency));
+	/** 记录覆盖：连续与断档（只看首末记录之间，今天的觉还没睡不算断档） */
+	let coverage = $derived(coverageStats(rows.map((r) => r.local_date)));
 
 	/** 就寝时刻（相对 18:00 的分钟）→ 钟点文案 */
 	function bedClock(rel: number | null): string {
@@ -346,8 +349,29 @@
 			</div>
 		</div>
 		<div class="card px-4 py-3">
+			<div class="text-[12px] text-[var(--color-ink-500)]">平均入睡潜伏期</div>
+			<div class="num mt-1 text-[20px] font-medium">
+				{structure.latencyMin === null ? '—' : `${Math.round(structure.latencyMin)} 分`}
+			</div>
+			<div class="mt-0.5 text-[10px] text-[var(--color-ink-500)]/70">
+				{#if structure.latencyMin === null}
+					导出未含上床时刻
+				{:else}
+					上床到睡着 · 中位数 · 基于 {structure.samples.latency} 晚
+				{/if}
+			</div>
+		</div>
+		<div class="card px-4 py-3">
 			<div class="text-[12px] text-[var(--color-ink-500)]">记录天数</div>
 			<div class="num mt-1 text-[20px] font-medium">{rows.length}</div>
+			<div class="mt-0.5 text-[10px] {coverage.missing.length > 0 ? 'text-[#8a6d1f]' : 'text-[var(--color-ink-500)]/70'}"
+				title={coverage.missing.length > 0 ? `断档：${coverage.missing.join('、')}` : ''}>
+				{#if coverage.current > 0}
+					当前连续 {coverage.current} 晚 · 最长 {coverage.longest} 晚{coverage.missing.length > 0 ? ` · 断档 ${coverage.missing.length} 晚` : ''}
+				{:else}
+					暂无记录
+				{/if}
+			</div>
 		</div>
 	</div>
 

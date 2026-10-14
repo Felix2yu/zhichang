@@ -25,6 +25,10 @@ export type RhythmNight = {
 	sleep_start?: string | null;
 	/** UTC RFC3339 */
 	sleep_end?: string | null;
+	/** UTC RFC3339 · 上床时刻；与 sleep_start 相减即入睡潜伏期 */
+	in_bed_start?: string | null;
+	/** UTC RFC3339 · 离床时刻 */
+	in_bed_end?: string | null;
 	tz_offset_min?: number | null;
 };
 
@@ -188,6 +192,8 @@ export type NightStructure = {
 	deepRatio: number | null;
 	remRatio: number | null;
 	coreRatio: number | null;
+	/** 入睡潜伏期（分钟）：上床到真正睡着。缺 in_bed_start 或数据可疑时为 null */
+	latencyMin: number | null;
 	sleepHr: number | null;
 	inBedHr: number | null;
 };
@@ -205,6 +211,14 @@ export function structureOf(n: RhythmNight): NightStructure {
 				: null;
 	const ratio = (v: number | null | undefined) =>
 		sleepHr && v != null && v > 0 ? v / sleepHr : null;
+
+	// 潜伏期 = 入睡 − 上床。两个时刻都是 UTC RFC3339，直接相减与时区无关。
+	// 负值（上床晚于入睡）只可能是脏数据，宁可不给也不显示一个负分钟。
+	let latencyMin: number | null = null;
+	if (n.sleep_start && n.in_bed_start) {
+		const ms = Date.parse(n.sleep_start) - Date.parse(n.in_bed_start);
+		if (Number.isFinite(ms) && ms >= 0) latencyMin = Math.round(ms / 60000);
+	}
 	return {
 		local_date: n.local_date,
 		// 效率的分母是「在床时长」；没有 in_bed 时不算（而不是拿睡眠时长除以自己 = 100%）
@@ -213,6 +227,7 @@ export function structureOf(n: RhythmNight): NightStructure {
 		deepRatio: ratio(n.deep_hr),
 		remRatio: ratio(n.rem_hr),
 		coreRatio: ratio(n.core_hr),
+		latencyMin,
 		sleepHr,
 		inBedHr
 	};
@@ -225,8 +240,16 @@ export type StructureSummary = {
 	remRatio: number | null;
 	coreRatio: number | null;
 	sleepHr: number | null;
+	/** 入睡潜伏期取中位数（个别失眠夜不应拉高整体印象），单位分钟 */
+	latencyMin: number | null;
 	/** 每项的样本数，界面据此说明「基于几晚」 */
-	samples: { efficiency: number; deepRatio: number; remRatio: number; sleepHr: number };
+	samples: {
+		efficiency: number;
+		deepRatio: number;
+		remRatio: number;
+		sleepHr: number;
+		latency: number;
+	};
 };
 
 export function summarizeStructure(nights: RhythmNight[]): StructureSummary {
@@ -244,13 +267,70 @@ export function summarizeStructure(nights: RhythmNight[]): StructureSummary {
 		remRatio: avg((s) => s.remRatio),
 		coreRatio: avg((s) => s.coreRatio),
 		sleepHr,
+		// 潜伏期用中位数：它经常长尾（偶尔失眠 40 分钟），均值会被少数夜晚带偏
+		latencyMin: medianOf(all.map((s) => s.latencyMin)),
 		samples: {
 			efficiency: count((s) => s.efficiency),
 			deepRatio: count((s) => s.deepRatio),
 			remRatio: count((s) => s.remRatio),
-			sleepHr: count((s) => s.sleepHr)
+			sleepHr: count((s) => s.sleepHr),
+			latency: count((s) => s.latencyMin)
 		}
 	};
+}
+
+function medianOf(xs: (number | null)[]): number | null {
+	const v = xs.filter((x): x is number => x !== null).sort((a, b) => a - b);
+	if (v.length === 0) return null;
+	const mid = v.length >> 1;
+	return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+}
+
+/** 记录覆盖情况：连续记录与断档。 */
+export type Coverage = {
+	/** 从最近一晚往前数的连续记录天数 */
+	current: number;
+	/** 区间内最长的连续记录天数 */
+	longest: number;
+	/** 有记录的天数 */
+	total: number;
+	/** 断档日期（只统计首末记录之间的空洞，不把「还没发生的夜晚」算成断档） */
+	missing: string[];
+};
+
+/**
+ * 统计记录覆盖。dates 为睡眠日集合（内部去重排序）。
+ * 断档的口径：只看首条与末条记录之间的空洞——今天的觉还没睡，
+ * 把「今天没记录」报成断档是误报。
+ */
+export function coverageStats(dates: string[]): Coverage {
+	const unique = [...new Set(dates.filter(Boolean))].sort();
+	if (unique.length === 0) {
+		return { current: 0, longest: 0, total: 0, missing: [] };
+	}
+	const DAY = 86400000;
+	const toMs = (d: string) => Date.parse(`${d}T00:00:00Z`);
+	const missing: string[] = [];
+	// 连续段长度：相邻日期差 1 天则延续，否则重开一段
+	let longest = 1;
+	let run = 1;
+	for (let i = 1; i < unique.length; i++) {
+		const gapDays = Math.round((toMs(unique[i]) - toMs(unique[i - 1])) / DAY);
+		for (let k = 1; k < gapDays; k++) {
+			const d = new Date(toMs(unique[i - 1]) + k * DAY);
+			missing.push(d.toISOString().slice(0, 10));
+		}
+		run = gapDays === 1 ? run + 1 : 1;
+		if (run > longest) longest = run;
+	}
+	// 当前连续：从末条往前数
+	let current = 1;
+	for (let i = unique.length - 1; i > 0; i--) {
+		const gapDays = Math.round((toMs(unique[i]) - toMs(unique[i - 1])) / DAY);
+		if (gapDays !== 1) break;
+		current++;
+	}
+	return { current, longest, total: unique.length, missing };
 }
 
 /** 效率分档，用于给出可读的评价。 */
