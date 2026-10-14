@@ -20,6 +20,7 @@
 		type SleepScore
 	} from '#lib/sleep-score';
 	import { STAGE_META, stageMeta } from '#lib/sleep-stages';
+	import { GRAIN_LABEL, bucketMean, grainFor } from '#lib/sleep-buckets';
 	import {
 		DEFAULT_NIGHT_METRIC,
 		availableNightMetrics,
@@ -60,45 +61,49 @@
 	// —— 夜间生理指标（按入睡时间窗关联，非 local_date）——
 	let nightRows = $state<NightMetricRow[]>([]);
 	let nightIdx = $derived(indexNightMetrics(nightRows));
-	/** 每晚一行的心率聚合；没有样本的夜晚是 undefined */
-	let nightHr = $derived(rows.map((r) => nightIdx.get(nightKey(DEFAULT_NIGHT_METRIC, r.local_date))));
-	let hasNightHr = $derived(nightHr.some((r): r is NightMetricRow => r !== undefined));
+	/** 图表横轴的分桶粒度：范围越长，一根柱代表越多夜晚 */
+	let grain = $derived(grainFor(days));
+	let dates = $derived(rows.map((r) => r.local_date));
+	/** 每晚一行的心率聚合；没有样本的夜晚是 null */
+	let nightHr = $derived(rows.map((r) => nightIdx.get(nightKey(DEFAULT_NIGHT_METRIC, r.local_date)) ?? null));
+	let hasNightHr = $derived(nightHr.some((r) => r !== null));
 	let nightHrSeries = $derived([
 		{
 			name: '夜间最低',
 			color: '#993556',
 			unit: 'bpm',
 			digits: 0,
-			points: rows
-				.map((r, i) => ({ date: r.local_date, row: nightHr[i] }))
-				.filter((p): p is { date: string; row: NightMetricRow } => !!p.row)
-				.map((p) => ({ date: p.date, value: p.row.min }))
+			points: bucketMean(
+				dates,
+				nightHr.map((r) => r?.min ?? null),
+				grain
+			)
 		},
 		{
 			name: '夜间平均',
 			color: '#5a6b8c',
 			unit: 'bpm',
 			digits: 0,
-			points: rows
-				.map((r, i) => ({ date: r.local_date, row: nightHr[i] }))
-				.filter((p): p is { date: string; row: NightMetricRow } => !!p.row)
-				.map((p) => ({ date: p.date, value: p.row.avg }))
+			points: bucketMean(
+				dates,
+				nightHr.map((r) => r?.avg ?? null),
+				grain
+			)
 		}
 	]);
 	/** 有分数的夜晚（范围最前面几天可能因历史不足没有分数） */
 	let scored = $derived(scores.filter((s): s is SleepScore & { score: number } => s.score !== null));
-	let latest = $derived(scored.length ? scored[scored.length - 1] : null);
 	let avgScore = $derived(
 		scored.length ? scored.reduce((a, s) => a + s.score, 0) / scored.length : null
 	);
 
 	let stageSeries = $derived([
-		{ name: '深睡', type: 'bar' as const, stack: 'sleep', color: '#0c447c', points: rows.map((r) => ({ date: r.local_date, value: r.deep_hr ?? 0 })) },
-		{ name: '核心', type: 'bar' as const, stack: 'sleep', color: '#378add', points: rows.map((r) => ({ date: r.local_date, value: r.core_hr ?? 0 })) },
-		{ name: 'REM', type: 'bar' as const, stack: 'sleep', color: '#85b7eb', points: rows.map((r) => ({ date: r.local_date, value: r.rem_hr ?? 0 })) }
+		{ name: '深睡', type: 'bar' as const, stack: 'sleep', color: '#0c447c', points: bucketMean(dates, rows.map((r) => r.deep_hr), grain) },
+		{ name: '核心', type: 'bar' as const, stack: 'sleep', color: '#378add', points: bucketMean(dates, rows.map((r) => r.core_hr), grain) },
+		{ name: 'REM', type: 'bar' as const, stack: 'sleep', color: '#85b7eb', points: bucketMean(dates, rows.map((r) => r.rem_hr), grain) }
 	]);
 	let totalSeries = $derived([
-		{ name: '总睡眠', points: rows.map((r) => ({ date: r.local_date, value: r.total_sleep_hr ?? 0 })) }
+		{ name: '总睡眠', points: bucketMean(dates, rows.map((r) => r.total_sleep_hr), grain) }
 	]);
 	let scoreSeries = $derived([
 		{
@@ -106,7 +111,11 @@
 			color: '#5a6b8c',
 			unit: '分',
 			digits: 0,
-			points: scored.map((s) => ({ date: s.local_date, value: s.score }))
+			points: bucketMean(
+				scores.map((s) => s.local_date),
+				scores.map((s) => s.score),
+				grain
+			)
 		}
 	]);
 	let avg = $derived(
@@ -527,7 +536,7 @@
 	</div>
 
 	<div class="card p-4">
-		<div class="mb-2 text-[13px] font-medium">评分趋势</div>
+		<div class="mb-2 flex flex-wrap items-baseline gap-2 text-[13px] font-medium">评分趋势{#if grain !== 'night'}<span class="text-[11px] font-normal text-[var(--color-ink-500)]">· {GRAIN_LABEL[grain]}</span>{/if}</div>
 		{#if loading}
 			<div class="flex h-[220px] items-center justify-center text-[13px] text-[var(--color-ink-500)]">加载中…</div>
 		{:else if scored.length === 0}
@@ -545,6 +554,9 @@
 		<div class="card p-4">
 			<div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
 				<span class="text-[13px] font-medium">{meta.label}{night ? ` · ${night}` : ''}</span>
+				{#if grain !== 'night'}
+					<span class="text-[11px] text-[var(--color-ink-500)]">趋势 {GRAIN_LABEL[grain]}</span>
+				{/if}
 				{#if nightHrRow}
 					<span class="text-[10px] text-[var(--color-ink-500)]/80">
 						来源 {nightHrRow.source} · {nightHrRow.sample_count} 点
@@ -774,7 +786,7 @@
 	</div>
 
 	<div class="card p-4">
-		<div class="mb-2 text-[13px] font-medium">睡眠分期</div>
+		<div class="mb-2 flex flex-wrap items-baseline gap-2 text-[13px] font-medium">睡眠分期{#if grain !== 'night'}<span class="text-[11px] font-normal text-[var(--color-ink-500)]">· {GRAIN_LABEL[grain]}</span>{/if}</div>
 		{#if loading}
 			<div class="flex h-[260px] items-center justify-center text-[13px] text-[var(--color-ink-500)]">加载中…</div>
 		{:else}
@@ -783,7 +795,7 @@
 	</div>
 
 	<div class="card p-4">
-		<div class="mb-2 text-[13px] font-medium">总睡眠时长</div>
+		<div class="mb-2 flex flex-wrap items-baseline gap-2 text-[13px] font-medium">总睡眠时长{#if grain !== 'night'}<span class="text-[11px] font-normal text-[var(--color-ink-500)]">· {GRAIN_LABEL[grain]}</span>{/if}</div>
 		{#if !loading}
 			<TrendChart series={totalSeries} height={220} unit="h" digits={1} />
 		{/if}
