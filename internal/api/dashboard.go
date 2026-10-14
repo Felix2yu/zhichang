@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/subtle"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,20 +14,22 @@ import (
 	"github.com/Felix2yu/zhichang/internal/store/postgres"
 )
 
-// Dashboard 提供仪表盘只读查询接口。
+// Dashboard 提供仪表盘只读查询接口；目标写入是唯一需要令牌的口子。
 type Dashboard struct {
 	db     *postgres.DB
 	metric *metric.Registry
 	loc    *time.Location
 	tzName string
+	// settingsToken 为空时目标只读：宁可不给写，也不能在未配置令牌时敞开写接口。
+	settingsToken string
 }
 
 // NewDashboard 构造仪表盘 API。
-func NewDashboard(db *postgres.DB, reg *metric.Registry, loc *time.Location, tzName string) *Dashboard {
-	return &Dashboard{db: db, metric: reg, loc: loc, tzName: tzName}
+func NewDashboard(db *postgres.DB, reg *metric.Registry, loc *time.Location, tzName, settingsToken string) *Dashboard {
+	return &Dashboard{db: db, metric: reg, loc: loc, tzName: tzName, settingsToken: settingsToken}
 }
 
-// Register 挂载只读查询路由。
+// Register 挂载查询路由。
 func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/metrics", d.listMetrics)
 	r.Get("/api/summary", d.summary)
@@ -37,7 +41,90 @@ func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/sleep/night-metrics", d.sleepNightMetrics)
 	r.Get("/api/workouts", d.workouts)
 	r.Get("/api/sources", d.sources)
+	r.Get("/api/goals", d.listGoals)
 	r.Get("/api/sync/status", d.syncStatus)
+	// 写接口：整个仪表盘只有这两条，必须带 ZHICHANG_SETTINGS_TOKEN
+	r.Put("/api/goals", d.requireSettings(d.putGoal))
+	r.Delete("/api/goals", d.requireSettings(d.deleteGoal))
+}
+
+// requireSettings 校验 Bearer 令牌。未配置令牌时直接 503——
+// 不能因为「还没设令牌」就把写接口敞开。
+func (d *Dashboard) requireSettings(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if d.settingsToken == "" {
+			WriteError(w, http.StatusServiceUnavailable, "未配置 ZHICHANG_SETTINGS_TOKEN，目标只读")
+			return
+		}
+		given := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if subtle.ConstantTimeCompare([]byte(given), []byte(d.settingsToken)) != 1 {
+			WriteError(w, http.StatusUnauthorized, "令牌不正确")
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (d *Dashboard) listGoals(w http.ResponseWriter, r *http.Request) {
+	rows, err := d.db.Goals(r.Context())
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// 单位与中文名一律从指标字典取，goals 表只存数值
+	out := make([]goalItem, 0, len(rows))
+	for _, g := range rows {
+		item := goalItem{Metric: g.Metric, Target: g.Target, DisplayName: g.Metric, UpdatedAt: g.UpdatedAt}
+		if def, ok := d.metric.Get(g.Metric); ok {
+			item.DisplayName = def.DisplayNameZH
+			item.Unit = def.PreferredUnit
+		}
+		out = append(out, item)
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"goals": out})
+}
+
+func (d *Dashboard) putGoal(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Metric string  `json:"metric"`
+		Target float64 `json:"target"`
+	}
+	// 目标体很小，给 4KB 上限足够，别让未鉴权的请求体撑内存
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in); err != nil {
+		WriteError(w, http.StatusBadRequest, "请求体不是合法 JSON")
+		return
+	}
+	if in.Metric == "" {
+		WriteError(w, http.StatusBadRequest, "metric 不能为空")
+		return
+	}
+	if err := d.db.SetGoal(r.Context(), in.Metric, in.Target, d.metric.IsKnown(in.Metric)); err != nil {
+		WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	d.listGoals(w, r)
+}
+
+func (d *Dashboard) deleteGoal(w http.ResponseWriter, r *http.Request) {
+	metricName := strings.TrimSpace(r.URL.Query().Get("metric"))
+	if metricName == "" {
+		WriteError(w, http.StatusBadRequest, "metric 不能为空")
+		return
+	}
+	if err := d.db.DeleteGoal(r.Context(), metricName); err != nil {
+		WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	d.listGoals(w, r)
+}
+
+// goalItem 是对外暴露的一条目标（带字典里的中文名与单位）。
+type goalItem struct {
+	Metric      string    `json:"metric"`
+	DisplayName string    `json:"display_name"`
+	Unit        string    `json:"unit"`
+	Target      float64   `json:"target"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func (d *Dashboard) listMetrics(w http.ResponseWriter, r *http.Request) {

@@ -11,14 +11,16 @@ import (
 
 // Config 是服务运行所需的全部配置。
 type Config struct {
-	HTTPAddr      string        `env:"HTTP_ADDR"`
-	DBDSN         string        `env:"DB_DSN"`
-	HomeTZ        string        `env:"HOME_TZ"`
-	IngestToken   string        `env:"INGEST_TOKEN"`
-	DedupMode     string        `env:"DEDUP_MODE"`
-	RawArchiveDir string        `env:"RAW_ARCHIVE_DIR"`
-	MaxBodyBytes  int64         `env:"MAX_BODY_BYTES"`
-	MigrateOnBoot bool          `env:"MIGRATE_ON_BOOT"`
+	HTTPAddr      string `env:"HTTP_ADDR"`
+	DBDSN         string `env:"DB_DSN"`
+	HomeTZ        string `env:"HOME_TZ"`
+	IngestToken   string `env:"INGEST_TOKEN"`
+	DedupMode     string `env:"DEDUP_MODE"`
+	RawArchiveDir string `env:"RAW_ARCHIVE_DIR"`
+	MaxBodyBytes  int64  `env:"MAX_BODY_BYTES"`
+	MigrateOnBoot bool   `env:"MIGRATE_ON_BOOT"`
+	// SettingsToken 保护唯一的写接口（目标设置）。为空即目标只读。
+	SettingsToken string        `env:"SETTINGS_TOKEN"`
 	LogLevel      string        `env:"LOG_LEVEL"`
 	RollupWorkers int           `env:"ROLLUP_WORKERS"`
 	RollupIdle    time.Duration `env:"ROLLUP_IDLE"`
@@ -77,6 +79,7 @@ func Load() (Config, error) {
 		c.HomeTZ = v
 	}
 	c.IngestToken = get("INGEST_TOKEN")
+	c.SettingsToken = get("SETTINGS_TOKEN")
 	if v := get("DEDUP_MODE"); v != "" {
 		c.DedupMode = v
 	}

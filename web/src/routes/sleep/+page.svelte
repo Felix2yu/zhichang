@@ -8,6 +8,7 @@
 		todayStr,
 		type NightMetricRow,
 		type NightStages,
+		type GoalRow,
 		type SleepRow,
 		type SleepStages
 	} from '#lib/api';
@@ -145,6 +146,54 @@
 			? rows.reduce((s, r) => s + (r.total_sleep_hr ?? 0), 0) / rows.length
 			: null
 	);
+
+	// —— 睡眠目标（服务端 goals 表；没有目标时相关行整块不渲染）——
+	let goals = $state<GoalRow[]>([]);
+	let sleepGoal = $derived(goals.find((g) => g.metric === 'sleep_analysis') ?? null);
+	let goalSamples = $derived(rows.filter((r) => r.total_sleep_hr != null).length);
+	let goalHit = $derived(
+		sleepGoal ? rows.filter((r) => (r.total_sleep_hr ?? 0) >= sleepGoal.target).length : 0
+	);
+	let goalEditing = $state(false);
+	let goalDraft = $state('');
+	let goalToken = $state('');
+	let goalBusy = $state(false);
+	let goalMsg = $state('');
+
+	function openGoalEditor() {
+		goalEditing = !goalEditing;
+		if (!goalEditing) return;
+		goalDraft = sleepGoal ? String(sleepGoal.target) : '7.5';
+		// 令牌只在本次会话内留着，不落 localStorage（清标签页就没了）
+		try {
+			goalToken = sessionStorage.getItem('zhichang.settings-token') ?? '';
+		} catch {
+			goalToken = '';
+		}
+	}
+
+	async function saveGoal() {
+		const v = Number(goalDraft);
+		if (!Number.isFinite(v) || v <= 0 || v > 24) {
+			goalMsg = '目标要在 0~24 小时之间';
+			return;
+		}
+		goalBusy = true;
+		goalMsg = '';
+		try {
+			goals = await api.setGoal('sleep_analysis', v, goalToken.trim());
+			try {
+				sessionStorage.setItem('zhichang.settings-token', goalToken.trim());
+			} catch {
+				/* 隐私模式下写不进会话存储，不影响保存 */
+			}
+			goalEditing = false;
+		} catch (e) {
+			goalMsg = e instanceof Error ? e.message : String(e);
+		} finally {
+			goalBusy = false;
+		}
+	}
 
 	/** 三项分解：把评分拆开，让「为什么是这个分」可见（跟着当前查看的夜晚） */
 	let components = $derived.by(() => {
@@ -422,14 +471,16 @@
 			const to = todayStr();
 			// 多取一段前置窗口：评分基准要用到当前范围之前的历史
 			// 夜间指标只要展示范围，不需要前置基准，与图表同一区间才对得齐
-			const [sl, nm, stg] = await Promise.all([
+			const [sl, nm, stg, gl] = await Promise.all([
 				api.sleep(shiftDays(-(days + LEAD_IN_DAYS), to), to),
 				api.sleepNightMetrics(from, to),
-				api.sleepStagesRange(from, to)
+				api.sleepStagesRange(from, to),
+				api.goals()
 			]);
 			allRows = sl.rows;
 			nightRows = nm.rows;
 			scheduleRows = stg.rows;
+			goals = gl;
 			error = '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -531,6 +582,11 @@
 			<div class="num mt-1 text-[20px] font-medium">
 				{avg === null ? '—' : `${avg.toFixed(1)} h`}
 			</div>
+			{#if sleepGoal && goalSamples > 0}
+				<div class="mt-0.5 text-[10px] text-[var(--color-ink-500)]/70">
+					目标 {sleepGoal.target.toFixed(1)} h · 达标 {goalHit}/{goalSamples} 晚
+				</div>
+			{/if}
 		</div>
 		<div class="card px-4 py-3">
 			<div class="text-[12px] text-[var(--color-ink-500)]">平均入睡潜伏期</div>
@@ -836,9 +892,65 @@
 	</div>
 
 	<div class="card p-4">
-		<div class="mb-2 flex flex-wrap items-baseline gap-2 text-[13px] font-medium">总睡眠时长{#if grain !== 'night'}<span class="text-[11px] font-normal text-[var(--color-ink-500)]">· {GRAIN_LABEL[grain]}</span>{/if}</div>
+		<div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+			<div class="flex flex-wrap items-baseline gap-2 text-[13px] font-medium">
+				总睡眠时长{#if grain !== 'night'}<span class="text-[11px] font-normal text-[var(--color-ink-500)]">· {GRAIN_LABEL[grain]}</span>{/if}
+				{#if sleepGoal}
+					<span class="num text-[11px] font-normal text-[#8a6d1f]">
+						目标 {sleepGoal.target.toFixed(1)} h
+					</span>
+				{/if}
+			</div>
+			<button
+				class="rounded border border-[var(--color-line)] px-2 py-0.5 text-[11px] font-normal text-[var(--color-ink-700)]"
+				onclick={openGoalEditor}>{goalEditing ? '收起' : sleepGoal ? '改目标' : '设目标'}</button
+			>
+		</div>
+		{#if goalEditing}
+			<div class="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
+				<label class="flex items-baseline gap-1.5">
+					<span class="text-[var(--color-ink-500)]">每晚目标</span>
+					<input
+						class="num w-16 rounded border border-[var(--color-line)] px-2 py-1 text-[12px]"
+						type="number"
+						step="0.5"
+						min="0.5"
+						max="24"
+						bind:value={goalDraft}
+					/>
+					<span class="text-[var(--color-ink-500)]">小时</span>
+				</label>
+				<label class="flex items-baseline gap-1.5">
+					<span class="text-[var(--color-ink-500)]">设置令牌</span>
+					<input
+						class="w-40 rounded border border-[var(--color-line)] px-2 py-1 text-[12px]"
+						type="password"
+						placeholder="ZHICHANG_SETTINGS_TOKEN"
+						bind:value={goalToken}
+					/>
+				</label>
+				<button
+					class="rounded bg-[#0f6e56] px-3 py-1 text-[11px] text-white disabled:opacity-50"
+					disabled={goalBusy}
+					onclick={saveGoal}>{goalBusy ? '保存中…' : '保存'}</button
+				>
+				{#if goalMsg}<span class="text-[#a32d2d]">{goalMsg}</span>{/if}
+			</div>
+			<div class="mb-2 text-[10px] leading-relaxed text-[var(--color-ink-500)]/80">
+				令牌由服务端环境变量 ZHICHANG_SETTINGS_TOKEN 配置，只留在本次标签页内；
+				没配置时保存会提示 503，目标保持只读。
+			</div>
+		{/if}
 		{#if !loading}
-			<TrendChart series={totalSeries} height={220} unit="h" digits={1} />
+			<TrendChart
+				series={totalSeries}
+				height={220}
+				unit="h"
+				digits={1}
+				targetLine={sleepGoal
+					? { value: sleepGoal.target, label: `目标 ${sleepGoal.target.toFixed(1)} h` }
+					: null}
+			/>
 		{/if}
 	</div>
 
