@@ -23,6 +23,7 @@ var toolNames = []string{
 	"health_sleep",
 	"health_sleep_detail",
 	"health_workouts",
+	"health_ecg",
 	"health_data_coverage",
 	"health_correlation",
 }

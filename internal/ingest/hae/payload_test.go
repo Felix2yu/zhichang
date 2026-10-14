@@ -59,6 +59,8 @@ func TestIsEmpty(t *testing.T) {
 		{"只有指标", `{"data":{"metrics":[{"name":"step_count","units":"count","data":[]}]}}`, false},
 		{"只有运动", `{"data":{"workouts":[{"name":"Walking"}]}}`, false},
 		{"只有睡眠", `{"data":{"sleep":[{"date":"2026-10-13"}]}}`, false},
+		// 心电也是数据：漏掉它，一份只导出心电的自动化会被判成空包整体丢弃
+		{"只有心电图", `{"data":{"ecg":[{"start":"2026-10-13 09:16:15 +0800"}]}}`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,6 +90,8 @@ func TestCount(t *testing.T) {
 		],"workouts":[{},{}]}}`, 6, "received 口径：3+1 个指标点 + 2 条运动"},
 		{"睡眠不计入", `{"data":{"sleep":[{"date":"2026-10-13","totalSleep":7.5}]}}`, 0,
 			"聚合睡眠不产生 samples，计入会让 received 与落库条数对不上"},
+		{"心电不计入", `{"data":{"ecg":[{"start":"2026-10-13 09:16:15 +0800"}]}}`, 0,
+			"心电同样是事件表数据，不产生 samples；它的接收条数单独走 IngestStats.ECG"},
 		{"空指标名也算点", `{"data":{"metrics":[{"name":"","units":"x","data":[{}]}]}}`, 1,
 			"Count 是原始条数，与 Normalize 之后是否可用无关"},
 	}

@@ -94,6 +94,17 @@ func New(deps *Deps) *mcp.Server {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name: "health_ecg",
+		Description: "查询区间内的心电图记录：Apple 的判定结论（窦性心律/房颤/不确定等）、" +
+			"当时平均心率、采样率与点数。不含电压波形（一次测量 15360 个点）",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		From string `json:"from,omitempty" jsonschema:"起始日期 YYYY-MM-DD，默认 90 天前"`
+		To   string `json:"to,omitempty" jsonschema:"结束日期 YYYY-MM-DD，默认今天"`
+	}) (*mcp.CallToolResult, Result, error) {
+		return textResult(deps.ECG(ctx, in.From, in.To))
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "health_data_coverage",
 		Description: "查看数据新鲜度与覆盖情况：最近同步时间、缺失日、同步水位。用于判断数据是否可信",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {

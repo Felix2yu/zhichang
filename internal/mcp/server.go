@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Felix2yu/zhichang/internal/domain/ecg"
 	"github.com/Felix2yu/zhichang/internal/domain/metric"
 	"github.com/Felix2yu/zhichang/internal/store/postgres"
 )
@@ -474,6 +475,59 @@ func (d *Deps) Workouts(ctx context.Context, from, to string) (string, error) {
 		b.WriteString(fmt.Sprintf("| %s | %s | %.0f | %s | %s | %s |\n", r.LocalDate, r.Name, r.DurationMin, energy, dist, r.Source))
 	}
 	return b.String(), nil
+}
+
+// ECG 输出心电记录与判定结论。
+//
+// 刻意不返回波形：一次测量 15360 个点，塞进上下文既放不下也没有解读价值。
+// 这里给的是「哪天测了、Apple 判定是什么、当时平均心率多少」——
+// 波形留给网页看。
+func (d *Deps) ECG(ctx context.Context, from, to string) (string, error) {
+	if from == "" {
+		from = d.shift(-89)
+	}
+	if to == "" {
+		to = d.today()
+	}
+	rows, err := d.DB.ECGRange(ctx, from, to)
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
+		return fmt.Sprintf("%s ~ %s 没有心电记录", from, to), nil
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("心电图 %s ~ %s（%d 次）\n", from, to, len(rows)))
+	b.WriteString("| 日期 | 时刻 | 判定 | 平均心率 | 采样 | 点数 |\n|---|---|---|---|---|---|\n")
+	for _, r := range rows {
+		label := ecg.DisplayZH(ecg.Code(r.ClassificationCode))
+		if label == "" {
+			// 归一没认出来时展示上游原文，别拿自己的措辞盖掉它
+			label = r.Classification
+			if label == "" {
+				label = "（上游未给判定）"
+			}
+		}
+		hr, fs := "—", "—"
+		if r.AverageHeartRate != nil {
+			hr = fmt.Sprintf("%.0f bpm", *r.AverageHeartRate)
+		}
+		if r.SamplingFrequency != nil {
+			fs = fmt.Sprintf("%d Hz", *r.SamplingFrequency)
+		}
+		b.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %d |\n",
+			r.LocalDate, hhmm(r.Start, r.TZOffsetMin), label, hr, fs, r.VoltageCount))
+	}
+	return b.String(), nil
+}
+
+// hhmm 把 UTC 时刻按记录自带的偏移还原成本地钟点。
+func hhmm(iso string, tzOffsetMin int) string {
+	t, err := time.Parse(time.RFC3339, iso)
+	if err != nil {
+		return iso
+	}
+	return t.Add(time.Duration(tzOffsetMin) * time.Minute).Format("15:04")
 }
 
 // Coverage 输出数据覆盖度与新鲜度。

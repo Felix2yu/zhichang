@@ -53,6 +53,7 @@ type response struct {
 	Updated        int      `json:"updated"`
 	Workouts       int      `json:"workouts"`
 	Sleep          int      `json:"sleep"`
+	ECG            int      `json:"ecg"`
 	Skipped        int      `json:"skipped"`
 	DuplicateRun   bool     `json:"duplicate_run"`
 	UnknownMetrics []string `json:"unknown_metrics,omitempty"`
@@ -127,6 +128,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Received, resp.Inserted = out.Received, out.Inserted
 	resp.Duplicates, resp.Updated, resp.Workouts, resp.Sleep = out.Duplicates, out.Updated, out.Workouts, out.Sleep
+	resp.ECG = out.ECG
 	resp.Skipped, resp.DuplicateRun, resp.UnknownMetrics = out.Skipped, out.DuplicateRun, out.UnknownMetrics
 	resp.Affected.From, resp.Affected.To = out.AffectedFrom, out.AffectedTo
 	api.WriteJSON(w, http.StatusOK, resp)

@@ -79,7 +79,23 @@ type Payload struct {
 type Data struct {
 	Metrics  []Metric        `json:"metrics"`
 	Workouts []Workout       `json:"workouts"`
+	ECG      []ECG           `json:"ecg"`
 	Sleep    json.RawMessage `json:"sleep"`
+}
+
+// ECG 是一次心电测量。
+//
+// Classification 是**本地化文本**（简中「窦性心律」、英文 "Sinus Rhythm"），
+// 不是稳定枚举——归一由 domain/ecg 负责，这里只负责把原文拿全。
+type ECG struct {
+	Start                       string     `json:"start"`
+	End                         string     `json:"end"`
+	Classification              string     `json:"classification"`
+	Severity                    string     `json:"severity"`
+	AverageHeartRate            Float      `json:"averageHeartRate"`
+	NumberOfVoltageMeasurements Float      `json:"numberOfVoltageMeasurements"`
+	SamplingFrequency           Float      `json:"samplingFrequency"`
+	Source                      SourceName `json:"source"`
 }
 
 // Metric 是一类健康指标。
@@ -187,11 +203,20 @@ func ParsePayload(r io.Reader) (*Payload, error) {
 }
 
 // IsEmpty 判断导出是否没有任何数据。
+//
+// 心电图也要算进来：它不产生 samples，但确实是数据。漏掉它的话，
+// 一份「只导出了心电图」的自动化会被判成空包，回 200/empty 并整体丢弃，
+// 而且日志里看不出任何异常。
 func (p *Payload) IsEmpty() bool {
-	return len(p.Data.Metrics) == 0 && len(p.Data.Workouts) == 0 && len(p.Data.Sleep) == 0
+	return len(p.Data.Metrics) == 0 && len(p.Data.Workouts) == 0 &&
+		len(p.Data.ECG) == 0 && len(p.Data.Sleep) == 0
 }
 
 // Count 返回原始记录条数（指标样本 + 运动）。
+//
+// 心电图与聚合睡眠都不计入：它们是事件表的数据，不产生 samples，
+// 计进来会让 received 与落库条数对不上，掩盖真正的丢数。
+// 心电图的接收条数单独走 IngestStats.ECG。
 func (p *Payload) Count() int {
 	n := 0
 	for _, m := range p.Data.Metrics {

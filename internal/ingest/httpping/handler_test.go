@@ -72,7 +72,7 @@ func newEnv(t *testing.T) *env {
 
 func truncateAll(t *testing.T, ctx context.Context, db *postgres.DB) {
 	t.Helper()
-	const q = `TRUNCATE samples, workouts, sleep_sessions, ingest_runs, rollup_queue, sync_watermark, sources, daily_metrics, daily_metrics_day`
+	const q = `TRUNCATE samples, workouts, sleep_sessions, ecg_records, ingest_runs, rollup_queue, sync_watermark, sources, daily_metrics, daily_metrics_day`
 	if _, err := db.Pool.Exec(ctx, q); err != nil {
 		t.Fatalf("清理失败: %v", err)
 	}
@@ -96,6 +96,7 @@ type decoded struct {
 	Updated        int      `json:"updated"`
 	Workouts       int      `json:"workouts"`
 	Sleep          int      `json:"sleep"`
+	ECG            int      `json:"ecg"`
 	Skipped        int      `json:"skipped"`
 	DuplicateRun   bool     `json:"duplicate_run"`
 	UnknownMetrics []string `json:"unknown_metrics"`
@@ -881,5 +882,65 @@ func TestIngestNewExportShapeIsNotBadRequest(t *testing.T) {
 	}
 	if distance == nil || *distance < 0.96 || *distance > 0.97 {
 		t.Fatalf("运动距离应有值（约 0.963 km），实际 %v", distance)
+	}
+}
+
+// 心电图整条链路：解析（source 是对象）→ 归一（本地化判定收敛成稳定码）
+// → 落记录表 → 响应回报 ecg 计数。
+//
+// 这条路径在此之前是完全缺失的：payload 结构体里根本没有 ecg 字段，
+// json.Decode 默认忽略未知字段，于是 9 条记录连同判定结果在解析第一步就
+// 静默消失——不报错、不提示、日志一片干净。
+func TestIngestECGRecords(t *testing.T) {
+	e := newEnv(t)
+	h := New(e.svc, testToken, 0, "")
+
+	body, err := os.ReadFile(newShapePayloadPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := do(t, h, body, header("session-id", "ecg-shape"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("应 200，实际 %d body=%s", rec.Code, rec.Body.String())
+	}
+	got := decode(t, rec)
+	if got.ECG != 1 {
+		t.Fatalf("响应应回报 1 条心电记录，实际 %d（body=%s）", got.ECG, rec.Body.String())
+	}
+	// 心电不产生 samples，所以它不能混进 received：否则 received 与落库条数对不上，
+	// 真正丢数时反而看不出来。
+	if got.Received != 8 {
+		t.Fatalf("received 应仍为 8（6 个指标点 + 2 条运动），实际 %d", got.Received)
+	}
+	if got.Skipped != 0 {
+		t.Fatalf("不该跳过任何记录，实际 %d", got.Skipped)
+	}
+
+	var class, code string
+	var avgHR float64
+	var fs, n int
+	if err := e.db.Pool.QueryRow(e.ctx,
+		`SELECT classification, classification_code, average_heart_rate, sampling_frequency, voltage_count
+		 FROM ecg_records`).Scan(&class, &code, &avgHR, &fs, &n); err != nil {
+		t.Fatalf("心电记录未入库: %v", err)
+	}
+	if class != "窦性心律" {
+		t.Fatalf("上游原文必须原样保留，实际 %q", class)
+	}
+	if code != "sinus_rhythm" {
+		t.Fatalf("本地化判定应收敛成稳定码 sinus_rhythm，实际 %q", code)
+	}
+	if avgHR != 66 || fs != 512 || n != 5 {
+		t.Fatalf("心率/采样率/点数错误: %v %d %d", avgHR, fs, n)
+	}
+
+	// 心电图是事件数据，不该在天级聚合里留下任何东西
+	var rolled int
+	if err := e.db.Pool.QueryRow(e.ctx,
+		`SELECT count(*) FROM rollup_queue WHERE metric LIKE '%ecg%'`).Scan(&rolled); err != nil {
+		t.Fatal(err)
+	}
+	if rolled != 0 {
+		t.Fatalf("心电不该进聚合队列，实际 %d 条", rolled)
 	}
 }

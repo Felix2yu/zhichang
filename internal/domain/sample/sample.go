@@ -4,6 +4,7 @@ package sample
 import (
 	"time"
 
+	"github.com/Felix2yu/zhichang/internal/domain/ecg"
 	"github.com/Felix2yu/zhichang/internal/domain/tz"
 )
 
@@ -82,4 +83,24 @@ type SleepSession struct {
 	RemHr        *float64
 	AwakeHr      *float64
 	InBedHr      *float64
+}
+
+// ECGRecord 是一次归一化心电测量。
+//
+// Classification 与 ClassificationCode 并存：前者是上游原文（随手机语言本地化），
+// 后者是归一后的稳定码。原文不能省——码认不出时界面要回落展示它；
+// 码也不能省——按本地化文本做统计，换一次手机语言历史数据就与之后的分裂了。
+type ECGRecord struct {
+	Source             string
+	StartTime          time.Time
+	EndTime            time.Time
+	LocalDate          string
+	TZOffsetMin        int
+	Classification     string
+	ClassificationCode ecg.Code
+	AverageHeartRate   *float64
+	SamplingFrequency  *int
+	// VoltageCount 是上游声明的波形点数（numberOfVoltageMeasurements）。
+	// 本次只落元数据，波形本身在重量版里才存，所以这里保留它用于核对导出是否被截断。
+	VoltageCount int
 }
