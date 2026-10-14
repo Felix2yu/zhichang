@@ -7,7 +7,7 @@
 - **后端**：Go 1.27 · chi · pgx v5 · TimescaleDB 2.30（PostgreSQL 18）
 - **前端**：SvelteKit 3 · Svelte 5 · Tailwind v4 · ECharts 6（构建产物内嵌进 Go 二进制）
 - **接入**：Health Auto Export REST API（主通道）· MQTT（可选旁路，默认关闭）
-- **AI**：内置 MCP 服务器（stdio + Streamable HTTP），9 个只读工具
+- **AI**：内置 MCP 服务器（stdio + Streamable HTTP），10 个只读工具
 
 ## 快速开始
 
@@ -90,7 +90,7 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 
 ## MCP
 
-内置 9 个只读工具：`health_list_metrics`、`health_daily_summary`、`health_query`、`health_compare`、`health_latest`、`health_sleep`、`health_workouts`、`health_data_coverage`、`health_correlation`。
+内置 10 个只读工具：`health_list_metrics`、`health_daily_summary`、`health_query`、`health_compare`、`health_latest`、`health_sleep`、`health_sleep_detail`、`health_workouts`、`health_data_coverage`、`health_correlation`。
 
 **stdio（Claude Desktop 等）**
 
