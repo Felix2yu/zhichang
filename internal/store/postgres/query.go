@@ -2,9 +2,12 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -171,6 +174,8 @@ func (db *DB) Samples(ctx context.Context, metric, from, to string, limit int) (
 }
 
 // SleepRow 是睡眠记录。
+// 除原始入睡/分期数据外，另带 tz_offset_min（本地入睡时刻要靠它还原）与
+// awake_count（夜间清醒段数，仅当导出含睡眠分段数据时才有值，否则为 nil）。
 type SleepRow struct {
 	LocalDate    string   `json:"local_date"`
 	Source       string   `json:"source"`
@@ -181,7 +186,10 @@ type SleepRow struct {
 	CoreHr       *float64 `json:"core_hr,omitempty"`
 	DeepHr       *float64 `json:"deep_hr,omitempty"`
 	RemHr        *float64 `json:"rem_hr,omitempty"`
+	AwakeHr      *float64 `json:"awake_hr,omitempty"`
 	InBedHr      *float64 `json:"in_bed_hr,omitempty"`
+	TZOffsetMin  int      `json:"tz_offset_min"`
+	AwakeCount   *int     `json:"awake_count,omitempty"`
 }
 
 // SleepRange 读取区间内的睡眠记录。
@@ -194,8 +202,19 @@ func (db *DB) SleepRange(ctx context.Context, from, to string) ([]SleepRow, erro
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.Pool.Query(ctx, `SELECT local_date, source, sleep_start, sleep_end, total_sleep_hr, asleep_hr, core_hr, deep_hr, rem_hr, in_bed_hr
-		FROM sleep_sessions WHERE local_date BETWEEN $1 AND $2 ORDER BY local_date`, fd, td)
+	// awake_count 用「入床时间窗内的睡眠分段样本」统计：
+	// 分段样本的 local_date 落在各段自身的起始日，跨零点后会与睡眠会话的 local_date
+	// （以 sleepStart 为准）错开一天，因此按时间窗而不是按 local_date 关联。
+	rows, err := db.Pool.Query(ctx, `SELECT s.local_date, s.source, s.sleep_start, s.sleep_end,
+			s.total_sleep_hr, s.asleep_hr, s.core_hr, s.deep_hr, s.rem_hr, s.awake_hr, s.in_bed_hr, s.tz_offset_min,
+			(SELECT CASE WHEN count(*) = 0 THEN NULL
+			             ELSE count(*) FILTER (WHERE lower(coalesce(p.meta->>'stage', '')) LIKE '%awake%'
+			                                      OR coalesce(p.meta->>'stage', '') LIKE '%醒%') END
+			   FROM samples p
+			  WHERE p.metric = 'sleep_analysis'
+			    AND s.sleep_start IS NOT NULL AND s.sleep_end IS NOT NULL
+			    AND p.start_time >= s.sleep_start AND p.start_time < s.sleep_end)
+		FROM sleep_sessions s WHERE s.local_date BETWEEN $1 AND $2 ORDER BY s.local_date`, fd, td)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +224,7 @@ func (db *DB) SleepRange(ctx context.Context, from, to string) ([]SleepRow, erro
 		var r SleepRow
 		var ld pgtype.Date
 		var ss, se *time.Time
-		if err := rows.Scan(&ld, &r.Source, &ss, &se, &r.TotalSleepHr, &r.AsleepHr, &r.CoreHr, &r.DeepHr, &r.RemHr, &r.InBedHr); err != nil {
+		if err := rows.Scan(&ld, &r.Source, &ss, &se, &r.TotalSleepHr, &r.AsleepHr, &r.CoreHr, &r.DeepHr, &r.RemHr, &r.AwakeHr, &r.InBedHr, &r.TZOffsetMin, &r.AwakeCount); err != nil {
 			return nil, err
 		}
 		r.LocalDate = ld.Time.Format("2006-01-02")
@@ -220,6 +239,251 @@ func (db *DB) SleepRange(ctx context.Context, from, to string) ([]SleepRow, erro
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// SleepStageSeg 是一段睡眠分期（hypnogram 的一段）。
+type SleepStageSeg struct {
+	Start string `json:"start"` // UTC RFC3339
+	End   string `json:"end"`   // UTC RFC3339
+	Stage string `json:"stage"` // 归一化后的阶段键：awake/rem/core/deep/asleep/inbed/other
+	Raw   string `json:"raw"`   // 原始 stage 文本，便于排查上游写法
+	// Source 是该段所属来源（择优后通常与 SleepStages.Source 一致）。
+	Source string `json:"source"`
+	// LocalMin 是该段起点在「本夜时间轴」上的位置（分钟）：
+	// 以睡眠日 local_date 的本地 00:00 为 0，跨零点后顺延，凌晨 03:00 即 180。
+	LocalMin int `json:"local_min"`
+	// DurationMin 为该段时长（分钟）。
+	DurationMin float64 `json:"duration_min"`
+}
+
+// SleepStages 是一晚的睡眠分期时间线。
+type SleepStages struct {
+	LocalDate   string          `json:"local_date"`
+	Source      string          `json:"source"`
+	TZOffsetMin int             `json:"tz_offset_min"`
+	HasSession  bool            `json:"has_session"`
+	SleepStart  *string         `json:"sleep_start,omitempty"`
+	SleepEnd    *string         `json:"sleep_end,omitempty"`
+	Segments    []SleepStageSeg `json:"segments"`
+	// Totals 是各阶段的合计小时数，键与 Segments[].Stage 一致。
+	Totals map[string]float64 `json:"totals"`
+}
+
+// normalizeSleepStage 把上游各版本的 stage 写法归一化。
+// 顺序有讲究：新版 HealthKit 的 AsleepCore / AsleepDeep / AsleepREM 同时含
+// "asleep" 与具体阶段，必须先判具体阶段，否则会被归成笼统的 asleep。
+func normalizeSleepStage(raw string) string {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	switch {
+	case s == "":
+		return "other"
+	case strings.Contains(s, "inbed"), strings.Contains(s, "in bed"), strings.Contains(s, "在床"):
+		return "inbed"
+	case strings.Contains(s, "awake"), strings.Contains(s, "醒"):
+		return "awake"
+	case strings.Contains(s, "rem"):
+		return "rem"
+	case strings.Contains(s, "deep"), strings.Contains(s, "深"):
+		return "deep"
+	case strings.Contains(s, "core"), strings.Contains(s, "核心"):
+		return "core"
+	case strings.Contains(s, "asleep"), strings.Contains(s, "睡眠"):
+		return "asleep"
+	default:
+		return "other"
+	}
+}
+
+// SleepStages 读取某一晚的分期分段序列（时间线）。
+//
+// 分期数据落在 samples（metric='sleep_analysis'，阶段在 meta.stage），
+// 而睡眠会话在 sleep_sessions，两者用「入睡时间窗」关联：分期样本的 local_date
+// 是各段自身的起始日，跨零点后与会话的 local_date 并不相同。
+//
+// 夜间窗口的取法：
+//   - 有会话时用 [sleep_start, sleep_end]，精确到这一觉；
+//   - 没有会话（导出只给了分期）时退化为「入睡日 18:00 → 次日 18:00」。
+//
+// 两者都用样本自带的 tz_offset_min 把 UTC 换算成本地墙钟后再定位，
+// 因此不依赖服务端时区。
+func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error) {
+	d, err := parseDate(date)
+	if err != nil {
+		return nil, err
+	}
+	out := &SleepStages{
+		LocalDate:   date,
+		Segments:    make([]SleepStageSeg, 0, 64),
+		Totals:      make(map[string]float64, 6),
+		TZOffsetMin: 0,
+	}
+
+	// 会话窗口：取时长最长的那条（信息最完整）。
+	var sessStart, sessEnd *time.Time
+	sessRows, err := db.Pool.Query(ctx, `SELECT sleep_start, sleep_end, source, tz_offset_min
+		FROM sleep_sessions
+		WHERE local_date = $1 AND sleep_start IS NOT NULL AND sleep_end IS NOT NULL
+		ORDER BY (sleep_end - sleep_start) DESC LIMIT 1`, d)
+	if err != nil {
+		return nil, err
+	}
+	for sessRows.Next() {
+		var st, en time.Time
+		var src string
+		if err := sessRows.Scan(&st, &en, &src, &out.TZOffsetMin); err != nil {
+			sessRows.Close()
+			return nil, err
+		}
+		stv, env := st.UTC(), en.UTC()
+		sessStart, sessEnd = &stv, &env
+		out.Source = src
+		out.HasSession = true
+	}
+	sessRows.Close()
+	if err := sessRows.Err(); err != nil {
+		return nil, err
+	}
+	if sessStart != nil {
+		s := sessStart.Format(time.RFC3339)
+		e := sessEnd.Format(time.RFC3339)
+		out.SleepStart, out.SleepEnd = &s, &e
+	}
+
+	// 夜间窗口（分钟）：以睡眠日本地 00:00 为 0，横轴一路顺延到次日中午过后。
+	// 有会话时按入睡时刻的本地墙钟定位；无会话时用 18:00 → 次日 18:00。
+	const eveningAnchor = 18 * 60
+	winStart, winEnd := eveningAnchor, eveningAnchor+24*60
+	if sessStart != nil {
+		if m := localMinute(*sessStart, out.TZOffsetMin); m >= 0 && m < winStart {
+			winStart = m // 午睡等异常：如实以入睡时刻为起点
+		}
+		if m := localMinute(*sessEnd, out.TZOffsetMin); m >= 0 {
+			if m <= winStart {
+				m += 24 * 60 // 跨零点
+			}
+			if m > winStart {
+				winEnd = m
+			}
+		}
+	}
+
+	// 候选分段：睡眠日与次日都可能落样本。
+	nd := pgtype.Date{Time: d.Time.AddDate(0, 0, 1), Valid: true}
+	segRows, err := db.Pool.Query(ctx, `SELECT start_time, end_time, source, tz_offset_min,
+			COALESCE(meta->>'stage', '')
+		FROM samples
+		WHERE metric = 'sleep_analysis'
+		  AND local_date = ANY($1)
+		  AND COALESCE(meta->>'stage', '') <> ''
+		ORDER BY start_time`, []pgtype.Date{d, nd})
+	if err != nil {
+		return nil, err
+	}
+	defer segRows.Close()
+
+	type cand struct {
+		SleepStageSeg
+		source string
+	}
+	cands := make([]cand, 0, 256)
+	coverBySource := map[string]float64{}
+	for segRows.Next() {
+		var st, en time.Time
+		var src, raw string
+		var tz int
+		if err := segRows.Scan(&st, &en, &src, &tz, &raw); err != nil {
+			return nil, err
+		}
+		// 墙钟分钟要落到夜间窗口内：凌晨的 03:00 在本夜轴上是 180+1440，
+		// 因此两个候选值（当日 / 次日）里取落在窗口内的那个。
+		wall := localMinute(st, tz)
+		startMin := -1
+		for _, m := range [2]int{wall, wall + 24*60} {
+			if m >= winStart && m <= winEnd {
+				startMin = m
+				break
+			}
+		}
+		if startMin < 0 {
+			continue
+		}
+		durMin := en.Sub(st).Minutes()
+		if durMin <= 0 {
+			continue
+		}
+		// 超出窗口的部分裁掉（无会话时窗口是粗粒度的，可能切到相邻的觉）
+		if tail := float64(winEnd-startMin) - durMin; tail < 0 {
+			durMin += tail
+		}
+		if durMin <= 0 {
+			continue
+		}
+		seg := SleepStageSeg{
+			Start:       st.UTC().Format(time.RFC3339),
+			End:         en.UTC().Format(time.RFC3339),
+			Stage:       normalizeSleepStage(raw),
+			Raw:         raw,
+			Source:      src,
+			LocalMin:    startMin,
+			DurationMin: durMin,
+		}
+		coverBySource[src] += durMin
+		cands = append(cands, cand{SleepStageSeg: seg, source: src})
+	}
+	if err := segRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 多来源择优：会话自身的来源优先（手表分期比 iPhone 细，且与会话口径一致），
+	// 否则取覆盖率最高的来源。
+	pick := out.Source
+	if _, ok := coverBySource[pick]; !ok {
+		pick = ""
+		best := -1.0
+		for src, cov := range coverBySource {
+			if cov > best {
+				pick, best = src, cov
+			}
+		}
+	}
+	if pick != "" {
+		out.Source = pick
+	}
+
+	for _, c := range cands {
+		if c.source != pick {
+			continue
+		}
+		// 在床不是分期阶段，Apple 的时间线也不画它：只统计不渲染。
+		out.Segments = append(out.Segments, c.SleepStageSeg)
+		out.Totals[c.Stage] += c.DurationMin / 60
+	}
+	return out, nil
+}
+
+// LatestSleepStageDate 返回最近一晚有分期的睡眠日（以入睡时刻的本地日期为准）。
+// 没有分期数据时返回空串。
+func (db *DB) LatestSleepStageDate(ctx context.Context) (string, error) {
+	var d pgtype.Date
+	err := db.Pool.QueryRow(ctx, `SELECT local_date FROM samples
+		WHERE metric = 'sleep_analysis' AND COALESCE(meta->>'stage', '') <> ''
+		ORDER BY local_date DESC LIMIT 1`).Scan(&d)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !d.Valid {
+		return "", nil
+	}
+	return d.Time.Format("2006-01-02"), nil
+}
+
+// localMinute 把 UTC 时刻换算成「本地日期的 00:00 起算的分钟数」。
+func localMinute(t time.Time, tzOffsetMin int) int {
+	lt := t.UTC().Add(time.Duration(tzOffsetMin) * time.Minute)
+	return lt.Hour()*60 + lt.Minute()
 }
 
 // WorkoutRow 是运动记录。
