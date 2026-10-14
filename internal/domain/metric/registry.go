@@ -41,18 +41,18 @@ const (
 
 // Def 是一个指标的完整口径定义。
 type Def struct {
-	Metric          string    `json:"metric"`
-	DisplayNameZH   string    `json:"display_name_zh"`
-	Kind            Kind      `json:"kind"`
-	DayAgg          DayAgg    `json:"day_agg"`
-	CrossSourceAgg  CrossAgg  `json:"cross_source_agg"`
-	Unit            string    `json:"unit"`
-	PreferredUnit   string    `json:"preferred_unit"`
-	ValueField      string    `json:"value_field"`
-	Chart           string    `json:"chart"`
-	Enabled         bool      `json:"enabled"`
-	SortOrder       int       `json:"sort_order"`
-	UpdatedAt       time.Time `json:"updated_at,omitempty"`
+	Metric         string    `json:"metric"`
+	DisplayNameZH  string    `json:"display_name_zh"`
+	Kind           Kind      `json:"kind"`
+	DayAgg         DayAgg    `json:"day_agg"`
+	CrossSourceAgg CrossAgg  `json:"cross_source_agg"`
+	Unit           string    `json:"unit"`
+	PreferredUnit  string    `json:"preferred_unit"`
+	ValueField     string    `json:"value_field"`
+	Chart          string    `json:"chart"`
+	Enabled        bool      `json:"enabled"`
+	SortOrder      int       `json:"sort_order"`
+	UpdatedAt      time.Time `json:"updated_at,omitempty"`
 }
 
 // Registry 是内存态的指标字典。
