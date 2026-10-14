@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import {
 		api,
 		shiftDays,
@@ -60,14 +62,6 @@
 	/** 每晚一行的心率聚合；没有样本的夜晚是 undefined */
 	let nightHr = $derived(rows.map((r) => nightIdx.get(nightKey(DEFAULT_NIGHT_METRIC, r.local_date))));
 	let hasNightHr = $derived(nightHr.some((r): r is NightMetricRow => r !== undefined));
-	/** 最近一晚有夜间心率的记录 */
-	let latestNightHr = $derived.by(() => {
-		for (let i = nightHr.length - 1; i >= 0; i--) {
-			const r = nightHr[i];
-			if (r) return { date: rows[i].local_date, row: r, tz: rows[i].tz_offset_min };
-		}
-		return null;
-	});
 	let nightHrSeries = $derived([
 		{
 			name: '夜间最低',
@@ -120,9 +114,9 @@
 			: null
 	);
 
-	/** 三项分解：把评分拆开，让「为什么是这个分」可见 */
+	/** 三项分解：把评分拆开，让「为什么是这个分」可见（跟着当前查看的夜晚） */
 	let components = $derived.by(() => {
-		const s = latest;
+		const s = nightScore;
 		if (!s) return [];
 		return [
 			{
@@ -175,10 +169,43 @@
 	let stages = $state<SleepStages>({ segments: [], totals: {}, physiology: [] });
 	let stageLoading = $state(true);
 	let stageError = $state('');
-	/** 当前查看的睡眠日；留空表示由后端挑最近一晚有分期的日期 */
-	let stageDate = $state('');
+	/**
+	 * 当前查看的睡眠日：整屏的「详情主键」。
+	 * 评分卡、夜间心率卡、分期时间线都跟着它走，不然翻到 10-08 那晚，
+	 * 上面的数字还是最新一晚的。
+	 */
+	let night = $state('');
 	/** 时间线下方叠加哪个夜间指标（只有一项时不出现切换条） */
 	let phyMetric = $state(DEFAULT_NIGHT_METRIC);
+
+	/** 这一晚的会话 / 评分 / 夜间心率：详情视图的三个数据源 */
+	let nightRow = $derived(rows.find((r) => r.local_date === night) ?? null);
+	let nightScore = $derived(scores.find((s) => s.local_date === night) ?? null);
+	let nightHrRow = $derived(nightIdx.get(nightKey(DEFAULT_NIGHT_METRIC, night)) ?? null);
+
+	/** URL 是这一屏的真相：?date= 看哪一晚、?days= 看多大范围，链接可直接分享 */
+	function readUrl() {
+		const q = page.url.searchParams;
+		const d = Number(q.get('days'));
+		if (d === 7 || d === 30 || d === 90 || d === 365) days = d;
+		const date = q.get('date');
+		if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) night = date;
+	}
+
+	/** URL 还没读进来之前不许回写，否则首帧会把 ?date= 深链当成脏参数抹掉 */
+	let ready = $state(false);
+
+	$effect(() => {
+		if (!ready) return;
+		const q = page.url.searchParams;
+		if (q.get('date') === (night || null) && q.get('days') === String(days)) return;
+		const u = new URL(page.url.href);
+		if (night) u.searchParams.set('date', night);
+		else u.searchParams.delete('date');
+		u.searchParams.set('days', String(days));
+		// shallow + replace：只改查询串，不触发导航、也不攒历史记录
+		void goto(`${u.pathname}${u.search}`, { replace: true, shallow: true });
+	});
 
 	/** 可选夜晚：范围内有记录的睡眠日，倒序（新的在前） */
 	let nightChoices = $derived([...rows].reverse().map((r) => r.local_date));
@@ -217,8 +244,8 @@
 		try {
 			stages = await api.sleepStages(date || undefined);
 			stageError = '';
-			// 后端在 date 缺省时会自己挑最近一晚，回填以便日期步进器与标题一致
-			if (!date && stages.local_date) stageDate = stages.local_date;
+			// 后端在 date 缺省时会自己挑最近一晚，回填以便标题与步进器一致
+			if (!date && stages.local_date) night = stages.local_date;
 		} catch (e) {
 			stageError = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -226,14 +253,21 @@
 		}
 	}
 
+	/** 切到某一晚：详情区（评分、夜间心率、时间线）整屏跟着走 */
+	function selectNight(date: string) {
+		if (!date || date === night) return;
+		night = date;
+		void loadStages(date);
+	}
+
 	/** 日期步进：切到相邻的「有记录的夜晚」 */
 	function stepNight(dir: 1 | -1) {
 		const list = nightChoices;
 		if (list.length === 0) return;
-		const cur = stageDate || list[0];
+		const cur = night || list[0];
 		const idx = list.indexOf(cur);
 		const next = list[idx === -1 ? 0 : Math.min(list.length - 1, Math.max(0, idx + dir))];
-		if (next && next !== stageDate) loadStages(next);
+		selectNight(next);
 	}
 
 	function fmtDur(min: number): string {
@@ -331,12 +365,18 @@
 		} finally {
 			loading = false;
 		}
-		// 时间线跟着范围走：先试当前选中的日期，越界则让后端挑最近一晚
-		const inRange = stageDate && stageDate >= from;
-		await loadStages(inRange ? stageDate : '');
+		// 整屏跟着这一晚走：URL 里带来的日期越界（换了范围）就回落到范围内最新一晚
+		if (!night || night < from || !rows.some((r) => r.local_date === night)) {
+			night = rows.length ? rows[rows.length - 1].local_date : '';
+		}
+		await loadStages(night);
 	}
 
-	onMount(load);
+	onMount(() => {
+		readUrl();
+		ready = true;
+		void load();
+	});
 </script>
 
 <div class="space-y-4">
@@ -354,13 +394,13 @@
 		{#if loading}
 			<div class="text-[12px] text-[var(--color-ink-500)]">睡眠评分</div>
 			<div class="mt-1.5 h-[32px] w-24 animate-pulse rounded bg-[var(--color-line)]"></div>
-		{:else if latest && latest.score !== null}
-			{@const band = bandOf(latest.score)}
+		{:else if nightScore && nightScore.score !== null}
+			{@const band = bandOf(nightScore.score)}
 			<div class="flex flex-wrap items-start justify-between gap-3">
 				<div>
-					<div class="text-[12px] text-[var(--color-ink-500)]">睡眠评分 · {latest.local_date}</div>
+					<div class="text-[12px] text-[var(--color-ink-500)]">睡眠评分 · {nightScore.local_date}</div>
 					<div class="mt-0.5 flex items-baseline gap-2">
-						<span class="num text-[32px] leading-none font-medium">{latest.score}</span>
+						<span class="num text-[32px] leading-none font-medium">{nightScore.score}</span>
 						<span
 							class="rounded px-1.5 py-0.5 text-[11px]"
 							style="background:{band.color}1a;color:{band.color}">{band.label}</span
@@ -396,10 +436,14 @@
 				{/each}
 			</div>
 		{:else}
-			<div class="text-[12px] text-[var(--color-ink-500)]">睡眠评分</div>
-			<div class="mt-1 text-[13px]">历史不足，暂时无法评分</div>
+			<div class="text-[12px] text-[var(--color-ink-500)]">睡眠评分{night ? ` · ${night}` : ''}</div>
+			<div class="mt-1 text-[13px]">
+				{scores.length ? '这一晚没有评分' : '历史不足，暂时无法评分'}
+			</div>
 			<div class="mt-1 text-[11px] text-[var(--color-ink-500)]/80">
-				评分要与自己的历史比较，至少需要 5 晚带入睡时刻的记录
+				{scores.length
+					? '评分要有入睡时刻、且基准够（时长 30 晚、就寝 13 晚），这一晚缺其中一项'
+					: '评分要与自己的历史比较，至少需要 5 晚带入睡时刻的记录'}
 			</div>
 		{/if}
 	</div>
@@ -457,41 +501,49 @@
 		{/if}
 	</div>
 
-	<!-- 夜间心率：睡眠内部指标之外的生理交叉验证。窗口内没样本就整卡不渲染 -->
-	{#if hasNightHr && latestNightHr}
+	<!-- 夜间心率：睡眠内部指标之外的生理交叉验证。整屏范围内一项样本都没有才不渲染 -->
+	{#if hasNightHr}
 		{@const meta = nightMeta(DEFAULT_NIGHT_METRIC)}
 		<div class="card p-4">
 			<div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-				<span class="text-[13px] font-medium">{meta.label}</span>
-				<span class="text-[10px] text-[var(--color-ink-500)]/80">
-					{latestNightHr.date} · 来源 {latestNightHr.row.source} · {latestNightHr.row.sample_count} 点
-				</span>
-			</div>
-			<div class="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-				<span class="flex items-baseline gap-1.5">
-					<span class="num text-[28px] leading-none font-medium" style="color:{meta.color}">
-						{Math.round(latestNightHr.row.min)}
+				<span class="text-[13px] font-medium">{meta.label}{night ? ` · ${night}` : ''}</span>
+				{#if nightHrRow}
+					<span class="text-[10px] text-[var(--color-ink-500)]/80">
+						来源 {nightHrRow.source} · {nightHrRow.sample_count} 点
 					</span>
-					<span class="text-[11px] text-[var(--color-ink-500)]">{meta.unit} 最低</span>
-					{#if nightMinClock(latestNightHr.row, latestNightHr.tz)}
-						<span class="text-[11px] text-[var(--color-ink-500)]">
-							· {nightMinClock(latestNightHr.row, latestNightHr.tz)} 出现
+				{/if}
+			</div>
+			{#if nightHrRow}
+				<div class="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+					<span class="flex items-baseline gap-1.5">
+						<span class="num text-[28px] leading-none font-medium" style="color:{meta.color}">
+							{Math.round(nightHrRow.min)}
 						</span>
-					{/if}
-				</span>
-				<span class="flex items-baseline gap-1.5">
-					<span class="num text-[20px] leading-none font-medium">
-						{Math.round(latestNightHr.row.avg)}
+						<span class="text-[11px] text-[var(--color-ink-500)]">{meta.unit} 最低</span>
+						{#if nightMinClock(nightHrRow)}
+							<span class="text-[11px] text-[var(--color-ink-500)]">
+								· {nightMinClock(nightHrRow)} 出现
+							</span>
+						{/if}
 					</span>
-					<span class="text-[11px] text-[var(--color-ink-500)]">{meta.unit} 平均</span>
-				</span>
-				<span class="flex items-baseline gap-1.5">
-					<span class="num text-[20px] leading-none font-medium">
-						{Math.round(latestNightHr.row.min)}–{Math.round(latestNightHr.row.max)}
+					<span class="flex items-baseline gap-1.5">
+						<span class="num text-[20px] leading-none font-medium">
+							{Math.round(nightHrRow.avg)}
+						</span>
+						<span class="text-[11px] text-[var(--color-ink-500)]">{meta.unit} 平均</span>
 					</span>
-					<span class="text-[11px] text-[var(--color-ink-500)]">区间</span>
-				</span>
-			</div>
+					<span class="flex items-baseline gap-1.5">
+						<span class="num text-[20px] leading-none font-medium">
+							{Math.round(nightHrRow.min)}–{Math.round(nightHrRow.max)}
+						</span>
+						<span class="text-[11px] text-[var(--color-ink-500)]">区间</span>
+					</span>
+				</div>
+			{:else}
+				<div class="text-[12px] text-[var(--color-ink-500)]">
+					这一晚的入睡窗口内没有心率样本（没戴手表，或导出未含该项）
+				</div>
+			{/if}
 			<div class="mt-2">
 				<TrendChart series={nightHrSeries} height={200} yUnit={meta.unit} />
 			</div>
@@ -597,13 +649,13 @@
 				<div class="flex items-center gap-1">
 					<button
 						class="rounded border border-[var(--color-line)] px-2 py-0.5 text-[11px] text-[var(--color-ink-700)] disabled:opacity-40"
-						disabled={stageLoading || nightChoices.indexOf(stageDate || nightChoices[0]) <= 0}
+						disabled={stageLoading || nightChoices.indexOf(night || nightChoices[0]) <= 0}
 						onclick={() => stepNight(-1)}>← 前一晚</button
 					>
 					<button
 						class="rounded border border-[var(--color-line)] px-2 py-0.5 text-[11px] text-[var(--color-ink-700)] disabled:opacity-40"
 						disabled={stageLoading
-							|| nightChoices.indexOf(stageDate || nightChoices[0]) >= nightChoices.length - 1}
+							|| nightChoices.indexOf(night || nightChoices[0]) >= nightChoices.length - 1}
 						onclick={() => stepNight(1)}>后一晚 →</button
 					>
 				</div>
@@ -712,7 +764,12 @@
 				</thead>
 				<tbody>
 					{#each [...rows].reverse() as r (r.local_date + r.source)}
-						<tr class="border-t border-[var(--color-line)]">
+						<tr
+							class="cursor-pointer border-t border-[var(--color-line)] hover:bg-[#fafbfc]"
+							class:bg-[#f2f6fb]={r.local_date === night}
+							title="查看这一晚"
+							onclick={() => selectNight(r.local_date)}
+						>
 							<td class="num px-4 py-2">{r.local_date}</td>
 							<td class="num px-4 py-2 text-right">{(r.total_sleep_hr ?? 0).toFixed(1)}</td>
 							<td class="num px-4 py-2 text-right">{(r.deep_hr ?? 0).toFixed(1)}</td>

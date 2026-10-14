@@ -26,16 +26,20 @@ type NightMetricRow struct {
 	LocalDate string `json:"local_date"`
 	Metric    string `json:"metric"`
 	// Source 是该晚窗口内择定的唯一来源（会话来源优先，否则样本最多）。
-	Source       string  `json:"source"`
-	Avg          float64 `json:"avg"`
-	Min          float64 `json:"min"`
-	Max          float64 `json:"max"`
-	SampleCount  int     `json:"sample_count"`
-	MinAt        string  `json:"min_at,omitempty"` // 最低值出现时刻（UTC RFC3339）
-	WindowStart  string  `json:"window_start"`
-	WindowEnd    string  `json:"window_end"`
-	WindowLength float64 `json:"window_min"` // 窗口时长（分钟），用于判断覆盖了多少
-	Unit         string  `json:"unit"`
+	Source      string  `json:"source"`
+	Avg         float64 `json:"avg"`
+	Min         float64 `json:"min"`
+	Max         float64 `json:"max"`
+	SampleCount int     `json:"sample_count"`
+	MinAt       string  `json:"min_at,omitempty"` // 最低值出现时刻（UTC RFC3339）
+	// MinAtTZOffsetMin 是「打出最低值的那条样本」自带的偏移（分钟）。
+	// 还原本地钟点必须用它，而不是服务端或会话的偏移：缺省时前端宁可不显示时刻，
+	// 也不能拿 0 当 UTC 凑，那会把钟点整体偏好几个小时。
+	MinAtTZOffsetMin *int    `json:"min_at_tz_offset_min,omitempty"`
+	WindowStart      string  `json:"window_start"`
+	WindowEnd        string  `json:"window_end"`
+	WindowLength     float64 `json:"window_min"` // 窗口时长（分钟），用于判断覆盖了多少
+	Unit             string  `json:"unit"`
 }
 
 // nightSessionCTE 为区间内每个睡眠日挑出「这一晚的窗口」。
@@ -119,11 +123,12 @@ func (db *DB) SleepNightMetrics(ctx context.Context, from, to string, metrics []
 				min(coalesce(value_min, value)) AS min_v,
 				max(coalesce(value_max, value)) AS max_v,
 				(array_agg(p.start_time ORDER BY coalesce(p.value_min, p.value), p.start_time))[1] AS min_at,
+				(array_agg(p.tz_offset_min ORDER BY coalesce(p.value_min, p.value), p.start_time))[1] AS min_tz,
 				max(p.unit) AS unit
 			FROM pts p
 			GROUP BY local_date, metric, source
 		)
-		SELECT a.local_date, a.metric, a.source, a.avg_v, a.min_v, a.max_v, a.n, a.min_at, a.unit,
+		SELECT a.local_date, a.metric, a.source, a.avg_v, a.min_v, a.max_v, a.n, a.min_at, a.min_tz, a.unit,
 			n.win_start, n.win_end,
 			EXTRACT(EPOCH FROM (n.win_end - n.win_start)) / 60
 		FROM agg a
@@ -142,8 +147,9 @@ func (db *DB) SleepNightMetrics(ctx context.Context, from, to string, metrics []
 		var ld pgtype.Date
 		var avg, minV, maxV, winLen *float64
 		var minAt pgtype.Timestamptz
+		var minTz *int32
 		var ws, we time.Time
-		if err := rows.Scan(&ld, &r.Metric, &r.Source, &avg, &minV, &maxV, &r.SampleCount, &minAt, &r.Unit,
+		if err := rows.Scan(&ld, &r.Metric, &r.Source, &avg, &minV, &maxV, &r.SampleCount, &minAt, &minTz, &r.Unit,
 			&ws, &we, &winLen); err != nil {
 			return nil, err
 		}
@@ -152,6 +158,10 @@ func (db *DB) SleepNightMetrics(ctx context.Context, from, to string, metrics []
 		r.Min = deref(minV)
 		r.Max = deref(maxV)
 		r.WindowLength = deref(winLen)
+		if minTz != nil {
+			off := int(*minTz)
+			r.MinAtTZOffsetMin = &off
+		}
 		if minAt.Valid {
 			r.MinAt = minAt.Time.UTC().Format(time.RFC3339)
 		}

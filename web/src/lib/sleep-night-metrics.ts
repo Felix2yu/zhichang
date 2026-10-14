@@ -59,12 +59,16 @@ export function nightClock(min: number): string {
 	return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
-/** 把某晚的最低值时刻（UTC）还原本地墙钟：靠该晚会话自带的 tz_offset_min */
-export function nightMinClock(row: NightMetricRow, tzOffsetMin: number | undefined): string {
-	if (!row.min_at) return '';
+/**
+ * 把某晚的最低值时刻还原本地墙钟。
+ * 偏移只用「打出最低值的那条样本」自带的（min_at_tz_offset_min）；
+ * 缺偏移就宁可不显示——拿 0 当 UTC 会把钟点整体偏好几个小时。
+ */
+export function nightMinClock(row: NightMetricRow): string {
+	if (!row.min_at || row.min_at_tz_offset_min == null) return '';
 	const t = new Date(row.min_at);
 	if (Number.isNaN(t.getTime())) return '';
-	const local = new Date(t.getTime() + (tzOffsetMin ?? 0) * 60_000);
+	const local = new Date(t.getTime() + row.min_at_tz_offset_min * 60_000);
 	// 只取钟点：跨零点后半夜的时刻取模后照样是对的
 	return nightClock(local.getUTCHours() * 60 + local.getUTCMinutes());
 }

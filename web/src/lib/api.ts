@@ -123,6 +123,8 @@ export type NightMetricRow = {
 	sample_count: number;
 	/** 最低值出现时刻（UTC RFC3339） */
 	min_at?: string;
+	/** 打出最低值的那条样本自带的偏移（分钟），缺省时不还原钟点 */
+	min_at_tz_offset_min?: number;
 	window_start: string;
 	window_end: string;
 	/** 窗口时长（分钟） */

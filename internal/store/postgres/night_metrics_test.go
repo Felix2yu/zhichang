@@ -115,6 +115,10 @@ func TestSleepNightMetricsUsesSleepWindow(t *testing.T) {
 	if want := at0800(10, 13, 2, 10).UTC().Format(time.RFC3339); n.MinAt != want {
 		t.Fatalf("最低值时刻应为凌晨那条 %s，实际 %q", want, n.MinAt)
 	}
+	// 还原钟点必须用打出最低值那条样本自带的偏移，不能拿 0 当 UTC 凑
+	if n.MinAtTZOffsetMin == nil || *n.MinAtTZOffsetMin != 480 {
+		t.Fatalf("min_at 的偏移应为样本自带的 480，实际 %v", n.MinAtTZOffsetMin)
+	}
 
 	// 午睡不算夜觉：10-11 只应统计夜觉窗口内的凌晨样本
 	if p := byDate["2026-10-11"]; p.SampleCount != 1 || p.Min != 49 {
