@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -385,22 +386,7 @@ func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error
 	}
 
 	// 夜间窗口（分钟）：以睡眠日本地 00:00 为 0，横轴一路顺延到次日中午过后。
-	// 有会话时按入睡时刻的本地墙钟定位；无会话时用 18:00 → 次日 18:00。
-	const eveningAnchor = 18 * 60
-	winStart, winEnd := eveningAnchor, eveningAnchor+24*60
-	if sessStart != nil {
-		if m := localMinute(*sessStart, out.TZOffsetMin); m >= 0 && m < winStart {
-			winStart = m // 午睡等异常：如实以入睡时刻为起点
-		}
-		if m := localMinute(*sessEnd, out.TZOffsetMin); m >= 0 {
-			if m <= winStart {
-				m += 24 * 60 // 跨零点
-			}
-			if m > winStart {
-				winEnd = m
-			}
-		}
-	}
+	winStart, winEnd := nightWindow(sessStart, sessEnd, out.TZOffsetMin)
 
 	// 候选分段：睡眠日与次日都可能落样本。
 	nd := pgtype.Date{Time: d.Time.AddDate(0, 0, 1), Valid: true}
@@ -415,23 +401,93 @@ func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error
 		return nil, err
 	}
 	defer segRows.Close()
+	raw, err := scanRawSegs(segRows)
+	if err != nil {
+		return nil, err
+	}
 
+	segs, totals, src := assembleNightSegments(raw, winStart, winEnd, out.Source)
+	out.Segments = segs
+	out.Totals = totals
+	if src != "" {
+		out.Source = src
+	}
+
+	// 同一把时间轴上再取夜间生理指标（夜间心率等）。
+	// 关联口径与分段一致：按入睡时间窗而非 local_date，跨零点的样本才捞得回来。
+	phy, err := db.nightPhysiology(ctx, []pgtype.Date{d, nd}, float64(winStart), float64(winEnd), sessSrc)
+	if err != nil {
+		return nil, err
+	}
+	out.Physiology = phy
+	return out, nil
+}
+
+// rawSeg 是一条尚未映射到本夜轴的分期样本。
+type rawSeg struct {
+	Start  time.Time
+	End    time.Time
+	Source string
+	TZ     int
+	Raw    string
+}
+
+func scanRawSegs(rows pgxRows) ([]rawSeg, error) {
+	out := make([]rawSeg, 0, 256)
+	for rows.Next() {
+		var s rawSeg
+		if err := rows.Scan(&s.Start, &s.End, &s.Source, &s.TZ, &s.Raw); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// pgxRows 是扫描分段需要的行接口（便于单测塞假数据）。
+type pgxRows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+	Close()
+}
+
+// nightWindow 算某一晚的窗口（分钟）：以睡眠日本地 00:00 为 0，横轴顺延到次日中午过后。
+// 有会话时按入睡/起床时刻的本地墙钟定位；无会话时用 18:00 → 次日 18:00。
+func nightWindow(sessStart, sessEnd *time.Time, tzOffsetMin int) (int, int) {
+	const eveningAnchor = 18 * 60
+	winStart, winEnd := eveningAnchor, eveningAnchor+24*60
+	if sessStart != nil {
+		if m := localMinute(*sessStart, tzOffsetMin); m >= 0 && m < winStart {
+			winStart = m // 午睡等异常：如实以入睡时刻为起点
+		}
+		if m := localMinute(*sessEnd, tzOffsetMin); m >= 0 {
+			if m <= winStart {
+				m += 24 * 60 // 跨零点
+			}
+			if m > winStart {
+				winEnd = m
+			}
+		}
+	}
+	return winStart, winEnd
+}
+
+// assembleNightSegments 把原始分段映射到本夜轴、裁进窗口，并按来源择优出一晚的序列。
+//
+// 墙钟分钟要落到窗口内：凌晨的 03:00 在本夜轴上是 180+1440，
+// 因此两个候选值（当日 / 次日）里取落在窗口内的那个。
+// 多来源择优：会话来源优先（手表分期比 iPhone 细，且与会话口径一致），否则取覆盖率最高的来源。
+func assembleNightSegments(raw []rawSeg, winStart, winEnd int, preferSource string) ([]SleepStageSeg, map[string]float64, string) {
 	type cand struct {
 		SleepStageSeg
 		source string
 	}
-	cands := make([]cand, 0, 256)
+	cands := make([]cand, 0, len(raw))
+	totals := make(map[string]float64, 6)
 	coverBySource := map[string]float64{}
-	for segRows.Next() {
-		var st, en time.Time
-		var src, raw string
-		var tz int
-		if err := segRows.Scan(&st, &en, &src, &tz, &raw); err != nil {
-			return nil, err
-		}
-		// 墙钟分钟要落到夜间窗口内：凌晨的 03:00 在本夜轴上是 180+1440，
-		// 因此两个候选值（当日 / 次日）里取落在窗口内的那个。
-		wall := localMinute(st, tz)
+	for _, s := range raw {
+		wall := localMinute(s.Start, s.TZ)
 		startMin := -1
 		for _, m := range [2]int{wall, wall + 24*60} {
 			if m >= winStart && m <= winEnd {
@@ -442,7 +498,7 @@ func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error
 		if startMin < 0 {
 			continue
 		}
-		durMin := en.Sub(st).Minutes()
+		durMin := s.End.Sub(s.Start).Minutes()
 		if durMin <= 0 {
 			continue
 		}
@@ -454,24 +510,19 @@ func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error
 			continue
 		}
 		seg := SleepStageSeg{
-			Start:       st.UTC().Format(time.RFC3339),
-			End:         en.UTC().Format(time.RFC3339),
-			Stage:       normalizeSleepStage(raw),
-			Raw:         raw,
-			Source:      src,
+			Start:       s.Start.UTC().Format(time.RFC3339),
+			End:         s.End.UTC().Format(time.RFC3339),
+			Stage:       normalizeSleepStage(s.Raw),
+			Raw:         s.Raw,
+			Source:      s.Source,
 			LocalMin:    startMin,
 			DurationMin: durMin,
 		}
-		coverBySource[src] += durMin
-		cands = append(cands, cand{SleepStageSeg: seg, source: src})
-	}
-	if err := segRows.Err(); err != nil {
-		return nil, err
+		coverBySource[s.Source] += durMin
+		cands = append(cands, cand{SleepStageSeg: seg, source: s.Source})
 	}
 
-	// 多来源择优：会话自身的来源优先（手表分期比 iPhone 细，且与会话口径一致），
-	// 否则取覆盖率最高的来源。
-	pick := out.Source
+	pick := preferSource
 	if _, ok := coverBySource[pick]; !ok {
 		pick = ""
 		best := -1.0
@@ -481,26 +532,158 @@ func (db *DB) SleepStages(ctx context.Context, date string) (*SleepStages, error
 			}
 		}
 	}
-	if pick != "" {
-		out.Source = pick
-	}
-
+	segs := make([]SleepStageSeg, 0, len(cands))
 	for _, c := range cands {
 		if c.source != pick {
 			continue
 		}
 		// 在床不是分期阶段，Apple 的时间线也不画它：只统计不渲染。
-		out.Segments = append(out.Segments, c.SleepStageSeg)
-		out.Totals[c.Stage] += c.DurationMin / 60
+		segs = append(segs, c.SleepStageSeg)
+		totals[c.Stage] += c.DurationMin / 60
 	}
+	return segs, totals, pick
+}
 
-	// 同一把时间轴上再取夜间生理指标（夜间心率等）。
-	// 关联口径与分段一致：按入睡时间窗而非 local_date，跨零点的样本才捞得回来。
-	phy, err := db.nightPhysiology(ctx, []pgtype.Date{d, nd}, float64(winStart), float64(winEnd), sessSrc)
+// NightStages 是某一晚的分期序列（睡眠时间表矩阵的一行）。
+type NightStages struct {
+	LocalDate   string          `json:"local_date"`
+	Source      string          `json:"source"`
+	TZOffsetMin int             `json:"tz_offset_min"`
+	SleepStart  *string         `json:"sleep_start,omitempty"`
+	SleepEnd    *string         `json:"sleep_end,omitempty"`
+	HasSession  bool            `json:"has_session"`
+	Segments    []SleepStageSeg `json:"segments"`
+}
+
+// SleepStagesRange 一次取区间内每晚的分期序列。
+//
+// 口径与 SleepStages 完全一致（共用 nightWindow / assembleNightSegments），
+// 区别只是把「一晚两次查询」压成整段两次：会话一次、分段一次。
+// 矩阵要同时画几十晚，逐晚查会打出 N 倍往返。
+func (db *DB) SleepStagesRange(ctx context.Context, from, to string) ([]NightStages, error) {
+	fd, err := parseDate(from)
 	if err != nil {
 		return nil, err
 	}
-	out.Physiology = phy
+	td, err := parseDate(to)
+	if err != nil {
+		return nil, err
+	}
+
+	// 会话：一晚可能有多来源，取时长最长且入睡/起床齐全的那条（与 SleepStages 同规则）
+	type sessInfo struct {
+		source string
+		tz     int
+		start  *time.Time
+		end    *time.Time
+	}
+	sessByDate := map[time.Time]sessInfo{}
+	sessRows, err := db.Pool.Query(ctx, `SELECT local_date, source, tz_offset_min, sleep_start, sleep_end
+		FROM sleep_sessions
+		WHERE local_date BETWEEN $1 AND $2
+		ORDER BY local_date, (sleep_end - sleep_start) DESC NULLS LAST`, fd, td)
+	if err != nil {
+		return nil, err
+	}
+	for sessRows.Next() {
+		var ld time.Time
+		var src string
+		var tz int
+		var st, en *time.Time
+		if err := sessRows.Scan(&ld, &src, &tz, &st, &en); err != nil {
+			sessRows.Close()
+			return nil, err
+		}
+		if _, ok := sessByDate[ld]; ok {
+			continue // 已按时长降序，第一条就是最长的那条
+		}
+		s := sessInfo{source: src, tz: tz}
+		if st != nil && en != nil {
+			stv, env := st.UTC(), en.UTC()
+			s.start, s.end = &stv, &env
+		}
+		sessByDate[ld] = s
+	}
+	sessRows.Close()
+	if err := sessRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 分段：次日也可能落样本，所以取到 to+1。
+	segByDate := map[time.Time][]rawSeg{}
+	segRows, err := db.Pool.Query(ctx, `SELECT start_time, end_time, source, tz_offset_min, local_date,
+			COALESCE(meta->>'stage', '')
+		FROM samples
+		WHERE metric = 'sleep_analysis'
+		  AND local_date BETWEEN $1 AND $2
+		  AND COALESCE(meta->>'stage', '') <> ''
+		ORDER BY start_time`, fd, pgtype.Date{Time: td.Time.AddDate(0, 0, 1), Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	defer segRows.Close()
+	for segRows.Next() {
+		var s rawSeg
+		var ld pgtype.Date
+		if err := segRows.Scan(&s.Start, &s.End, &s.Source, &s.TZ, &ld, &s.Raw); err != nil {
+			return nil, err
+		}
+		key := ld.Time.UTC().Truncate(24 * time.Hour)
+		segByDate[key] = append(segByDate[key], s)
+	}
+	if err := segRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 要出哪些晚：有会话、或有分段的日期（分段那侧排除 to+1，它只是次日候选）。
+	dates := make([]time.Time, 0, 64)
+	seen := map[time.Time]bool{}
+	for d := range sessByDate {
+		if !seen[d] {
+			seen[d] = true
+			dates = append(dates, d)
+		}
+	}
+	last := td.Time.UTC().Truncate(24 * time.Hour)
+	for d := range segByDate {
+		if d.After(last) || seen[d] {
+			continue
+		}
+		seen[d] = true
+		dates = append(dates, d)
+	}
+	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
+
+	out := make([]NightStages, 0, len(dates))
+	for _, day := range dates {
+		raw := append([]rawSeg{}, segByDate[day]...)
+		raw = append(raw, segByDate[day.AddDate(0, 0, 1)]...)
+		if len(raw) == 0 {
+			continue
+		}
+		sess := sessByDate[day]
+		winStart, winEnd := nightWindow(sess.start, sess.end, sess.tz)
+		segs, _, src := assembleNightSegments(raw, winStart, winEnd, sess.source)
+		if len(segs) == 0 {
+			continue
+		}
+		n := NightStages{
+			LocalDate:   day.Format("2006-01-02"),
+			Source:      src,
+			TZOffsetMin: sess.tz,
+			HasSession:  sess.start != nil,
+			Segments:    segs,
+		}
+		if sess.start != nil {
+			v := sess.start.Format(time.RFC3339)
+			n.SleepStart = &v
+		}
+		if sess.end != nil {
+			v := sess.end.Format(time.RFC3339)
+			n.SleepEnd = &v
+		}
+		out = append(out, n)
+	}
 	return out, nil
 }
 

@@ -7,6 +7,7 @@
 		shiftDays,
 		todayStr,
 		type NightMetricRow,
+		type NightStages,
 		type SleepRow,
 		type SleepStages
 	} from '#lib/api';
@@ -41,6 +42,7 @@
 	import RangePicker from '#lib/components/RangePicker.svelte';
 	import TrendChart from '#lib/components/TrendChart.svelte';
 	import SleepTimeline from '#lib/components/SleepTimeline.svelte';
+	import SleepScheduleChart from '#lib/components/SleepScheduleChart.svelte';
 	import SleepRhythmChart from '#lib/components/SleepRhythmChart.svelte';
 
 	/** 评分要用你自己的历史做基准（时长 30 晚、就寝 13 晚），故额外多取一段前置窗口 */
@@ -93,6 +95,26 @@
 	]);
 	/** 有分数的夜晚（范围最前面几天可能因历史不足没有分数） */
 	let scored = $derived(scores.filter((s): s is SleepScore & { score: number } => s.score !== null));
+
+	// —— 睡眠时间表矩阵 ——
+	let scheduleRows = $state<NightStages[]>([]);
+	/** 矩阵最多画最近多少晚：再多就看不出单晚了 */
+	const SCHEDULE_MAX_NIGHTS = 90;
+	let schedule = $derived.by(() => {
+		const byDate = new Map(scheduleRows.map((n) => [n.local_date, n.segments]));
+		// 终点取「最后一个有睡眠记录的夜晚」，不然今天的空行会被读成断档
+		const last = rows.length ? rows[rows.length - 1].local_date : '';
+		const all: { date: string; segments: NightStages['segments'] }[] = [];
+		if (last) {
+			for (let d = from; d <= last; d = shiftDays(1, d)) {
+				all.push({ date: d, segments: byDate.get(d) ?? [] });
+			}
+		}
+		return {
+			rows: all.slice(-SCHEDULE_MAX_NIGHTS),
+			hidden: Math.max(0, all.length - SCHEDULE_MAX_NIGHTS)
+		};
+	});
 	let avgScore = $derived(
 		scored.length ? scored.reduce((a, s) => a + s.score, 0) / scored.length : null
 	);
@@ -400,12 +422,14 @@
 			const to = todayStr();
 			// 多取一段前置窗口：评分基准要用到当前范围之前的历史
 			// 夜间指标只要展示范围，不需要前置基准，与图表同一区间才对得齐
-			const [sl, nm] = await Promise.all([
+			const [sl, nm, stg] = await Promise.all([
 				api.sleep(shiftDays(-(days + LEAD_IN_DAYS), to), to),
-				api.sleepNightMetrics(from, to)
+				api.sleepNightMetrics(from, to),
+				api.sleepStagesRange(from, to)
 			]);
 			allRows = sl.rows;
 			nightRows = nm.rows;
+			scheduleRows = stg.rows;
 			error = '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -684,6 +708,23 @@
 				</div>
 			{/if}
 		</div>
+	</div>
+
+	<!-- 睡眠时间表：逐晚的分期铺在同一把「相对 18:00」的横轴上，就寝早晚一眼看出来 -->
+	<div class="card p-4">
+		<div class="mb-2 text-[13px] font-medium">睡眠时间表</div>
+		{#if loading}
+			<div class="flex h-[200px] items-center justify-center text-[13px] text-[var(--color-ink-500)]">
+				加载中…
+			</div>
+		{:else}
+			<SleepScheduleChart nights={schedule.rows} onselect={selectNight} />
+			<div class="mt-1 text-[10px] leading-relaxed text-[var(--color-ink-500)]/80">
+				每行一晚（新夜在上），横轴是「相对 18:00 的本夜时间轴」，所以凌晨的时刻不会把行切断；
+				留白 = 那一晚没有分段记录。点某行查看那一晚。
+				{#if schedule.hidden > 0}当前只显示最近 {SCHEDULE_MAX_NIGHTS} 晚，另有 {schedule.hidden} 晚未画。{/if}
+			</div>
+		{/if}
 	</div>
 
 	<!-- 分期时间线：看清每一段的时序结构，聚合柱状图看不到这个 -->

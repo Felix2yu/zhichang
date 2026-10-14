@@ -139,6 +139,80 @@ func TestSleepRangeExposesAwakeAndInterruptions(t *testing.T) {
 	}
 }
 
+// TestSleepStagesRange 锁定睡眠时间表矩阵的数据源：
+//   - 一晚一行，分段口径与 SleepStages 完全一致（共用 nightWindow / assembleNightSegments）；
+//   - 凌晨的段（local_date 是次日）要归进入睡那一晚；
+//   - 没有分段的夜晚不出行（矩阵的留白由前端按日期序列补，不是后端塞空行）；
+//   - 结果必须是空数组而不是 nil（JSON 契约）。
+func TestSleepStagesRange(t *testing.T) {
+	db := openSleepDB(t)
+	ctx := context.Background()
+
+	if _, err := db.WriteSleep(ctx, 1, []sample.SleepSession{
+		{
+			LocalDate: "2026-10-12", TZOffsetMin: 480, Source: "Apple Watch",
+			SleepStart: ptr(at0800(10, 12, 23, 30)), SleepEnd: ptr(at0800(10, 13, 7, 0)),
+			TotalSleepHr: fptr(7.0),
+		},
+		{
+			LocalDate: "2026-10-11", TZOffsetMin: 480, Source: "Apple Watch",
+			SleepStart: ptr(at0800(10, 11, 23, 0)), SleepEnd: ptr(at0800(10, 12, 6, 30)),
+			TotalSleepHr: fptr(7.5),
+		},
+	}); err != nil {
+		t.Fatalf("写入睡眠会话失败: %v", err)
+	}
+
+	seg := func(st time.Time, durMin int, stage, localDate string) sample.Sample {
+		return sample.Sample{
+			Metric: "sleep_analysis", Source: "Apple Watch",
+			StartTime: st, EndTime: st.Add(time.Duration(durMin) * time.Minute),
+			Value: float64(durMin) / 60, Unit: "hr",
+			LocalDate: localDate, TZOffsetMin: 480, Meta: map[string]any{"stage": stage},
+		}
+	}
+	if _, _, _, _, err := db.WriteSamples(ctx, 1, []sample.Sample{
+		seg(at0800(10, 12, 23, 40), 40, "AsleepCore", "2026-10-12"),
+		seg(at0800(10, 13, 3, 0), 60, "AsleepDeep", "2026-10-13"), // 跨零点：归属 10-12 那晚
+		seg(at0800(10, 11, 23, 20), 30, "AsleepREM", "2026-10-11"),
+	}, "strict"); err != nil {
+		t.Fatalf("写入分段失败: %v", err)
+	}
+
+	rows, err := db.SleepStagesRange(ctx, "2026-10-10", "2026-10-12")
+	if err != nil {
+		t.Fatalf("SleepStagesRange 失败: %v", err)
+	}
+	if rows == nil {
+		t.Fatal("结果不能是 nil slice，会被编码成 JSON null")
+	}
+	if len(rows) != 2 {
+		t.Fatalf("期望 2 晚（10-10 没有分段不该出行），实际 %d：%v", len(rows), rows)
+	}
+	first, second := rows[0], rows[1]
+	if first.LocalDate != "2026-10-11" || second.LocalDate != "2026-10-12" {
+		t.Fatalf("应按睡眠日升序，实际 %s / %s", first.LocalDate, second.LocalDate)
+	}
+	if len(second.Segments) != 2 {
+		t.Fatalf("10-12 应有 2 段（含跨零点那段），实际 %d", len(second.Segments))
+	}
+	if second.Segments[1].LocalMin != 1620 || second.Segments[1].Stage != "deep" {
+		t.Fatalf("凌晨 03:00 应落在本夜轴 1620，实际 %s@%d", second.Segments[1].Stage, second.Segments[1].LocalMin)
+	}
+	if !second.HasSession || second.SleepStart == nil {
+		t.Fatal("有会话的夜晚应带入睡时刻")
+	}
+
+	// 区间内完全没有分段时：空数组
+	empty, err := db.SleepStagesRange(ctx, "2026-09-01", "2026-09-05")
+	if err != nil {
+		t.Fatalf("空区间查询失败: %v", err)
+	}
+	if empty == nil || len(empty) != 0 {
+		t.Fatalf("空区间应返回非 nil 空数组，实际 %#v", empty)
+	}
+}
+
 // TestSleepStagesTimeline 锁定分期时间线的口径：
 //   - 分段按「入睡时间窗」而非 local_date 关联，凌晨的段（local_date 是次日）必须收进来；
 //   - local_min 以睡眠日本地 00:00 为 0 并跨零点顺延（03:00 → 180+1440）；
