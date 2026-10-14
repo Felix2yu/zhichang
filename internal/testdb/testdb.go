@@ -172,10 +172,12 @@ func boot() (string, *embeddedpostgres.EmbeddedPostgres, error) {
 	return dsn, p, nil
 }
 
-// applySchema 建 0001 与 0002，并把它们登记进 schema_migrations。
+// applySchema 建除 0003 之外的全部迁移，并把它们登记进 schema_migrations。
 //
-// 0003 故意留着不建：让仓储层自己的 db.Migrate() 去补，
+// 0003（goals）故意留着不建：让仓储层自己的 db.Migrate() 去补，
 // 这样 execScript 这条真实生产路径仍然有覆盖。
+// 注意 0004 在这里会先跑一遍（空库上是空操作），它与 0003 没有依赖关系，
+// 所以跳过 0003 不会让它失败。
 func applySchema(ctx context.Context, dsn string) error {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {

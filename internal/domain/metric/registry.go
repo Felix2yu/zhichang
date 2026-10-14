@@ -122,7 +122,11 @@ func def(metric, zh string, kind Kind, day DayAgg, cross CrossAgg, unit, field, 
 	}
 }
 
-// Defaults 返回内置指标口径（与 migrations/0002_seed_metrics.sql 保持一致）。
+// Defaults 返回内置指标口径。启动时经 store.SeedMetrics 补齐到 metric_defs
+// （ON CONFLICT DO NOTHING，用户手工改过的条目不动），再 LoadMetrics 读回内存字典。
+//
+// 一个概念只登记一条：上游的多种写法由 alias.go 的别名表在入库时收敛过来，
+// 不在这里重复登记（重复登记会让趋势页出现两个同名 chip，其中一个永远无数据）。
 func Defaults() []Def {
 	return []Def{
 		// 累计量：日内 sum，跨来源取各来源总量的 max（消除 iPhone / Watch 双计）
@@ -131,11 +135,14 @@ func Defaults() []Def {
 		def("basal_energy_burned", "基础能量", KindCumulative, DayAggSum, CrossAggMax, "kcal", "qty", "bar", 30),
 		def("flights_climbed", "爬楼层数", KindCumulative, DayAggSum, CrossAggMax, "count", "qty", "bar", 40),
 		def("walking_running_distance", "步行+跑步距离", KindCumulative, DayAggSum, CrossAggMax, "km", "qty", "bar", 50),
-		def("distance_walking_running", "步行+跑步距离", KindCumulative, DayAggSum, CrossAggMax, "km", "qty", "bar", 51),
+		def("cycling_distance", "骑行距离", KindCumulative, DayAggSum, CrossAggMax, "km", "qty", "bar", 55),
 		def("dietary_water", "饮水量", KindCumulative, DayAggSum, CrossAggMax, "mL", "qty", "bar", 60),
+		def("caffeine", "咖啡因", KindCumulative, DayAggSum, CrossAggMax, "mg", "qty", "bar", 65),
 		def("mindful_minutes", "正念时长", KindCumulative, DayAggSum, CrossAggMax, "min", "qty", "bar", 70),
+		def("time_in_daylight", "日照时长", KindCumulative, DayAggSum, CrossAggMax, "min", "qty", "bar", 75),
 		def("exercise_time", "锻炼时长", KindCumulative, DayAggSum, CrossAggMax, "min", "qty", "bar", 80),
 		def("stand_time", "站立时长", KindCumulative, DayAggSum, CrossAggMax, "min", "qty", "bar", 90),
+		def("stand_hour", "站立小时数", KindCumulative, DayAggSum, CrossAggMax, "count", "qty", "bar", 95),
 		def("sleep_analysis", "睡眠时长", KindInterval, DayAggSum, CrossAggMax, "hr", "totalSleep", "stacked", 100),
 
 		// 瞬时量：日内 mean，跨来源按样本数加权 mean
@@ -143,12 +150,15 @@ func Defaults() []Def {
 		def("resting_heart_rate", "静息心率", KindInstant, DayAggMean, CrossAggMean, "bpm", "qty", "line", 120),
 		def("heart_rate_variability", "心率变异性", KindInstant, DayAggMean, CrossAggMean, "ms", "qty", "line", 130),
 		def("walking_heart_rate_average", "步行平均心率", KindInstant, DayAggMean, CrossAggMean, "bpm", "qty", "line", 140),
+		def("cardio_recovery", "心率恢复", KindInstant, DayAggMean, CrossAggMean, "count/min", "qty", "line", 145),
 		def("oxygen_saturation", "血氧饱和度", KindInstant, DayAggMean, CrossAggMean, "%", "qty", "line", 150),
-		def("respiratory_rate", "呼吸频率", KindInstant, DayAggMean, CrossAggMean, " breaths/min", "qty", "line", 160),
+		def("atrial_fibrillation_burden", "房颤负荷", KindInstant, DayAggMean, CrossAggMean, "%", "qty", "line", 155),
+		// 呼吸频率的展示单位不带前导空格：字典的 unit 就是界面上徽标的字面量。
+		def("respiratory_rate", "呼吸频率", KindInstant, DayAggMean, CrossAggMean, "breaths/min", "qty", "line", 160),
 		def("body_temperature", "体温", KindInstant, DayAggMean, CrossAggMean, "degC", "qty", "line", 170),
+		def("sleeping_wrist_temperature", "睡眠腕温", KindInstant, DayAggMean, CrossAggMean, "degC", "qty", "line", 175),
 		def("blood_glucose", "血糖", KindInstant, DayAggMean, CrossAggMean, "mg/dL", "qty", "line", 180),
 		def("body_mass", "体重", KindInstant, DayAggMean, CrossAggMean, "kg", "qty", "line", 190),
-		def("weight_&_body_mass", "体重", KindInstant, DayAggMean, CrossAggMean, "kg", "qty", "line", 191),
 		def("body_mass_index", "BMI", KindInstant, DayAggMean, CrossAggMean, "count", "qty", "line", 200),
 		def("body_fat_percentage", "体脂率", KindInstant, DayAggMean, CrossAggMean, "%", "qty", "line", 210),
 		def("lean_body_mass", "去脂体重", KindInstant, DayAggMean, CrossAggMean, "kg", "qty", "line", 220),
@@ -156,10 +166,18 @@ func Defaults() []Def {
 		def("blood_pressure_systolic", "收缩压", KindInstant, DayAggMean, CrossAggMean, "mmHg", "systolic", "line", 240),
 		def("blood_pressure_diastolic", "舒张压", KindInstant, DayAggMean, CrossAggMean, "mmHg", "diastolic", "line", 250),
 		def("vo2_max", "最大摄氧量", KindInstant, DayAggLast, CrossAggMean, "mL/min·kg", "qty", "line", 260),
+		def("physical_effort", "体力消耗", KindInstant, DayAggMean, CrossAggMean, "kcal/hr·kg", "qty", "line", 265),
 		def("walking_speed", "步行速度", KindInstant, DayAggMean, CrossAggMean, "km/hr", "qty", "line", 270),
 		def("walking_step_length", "步幅", KindInstant, DayAggMean, CrossAggMean, "cm", "qty", "line", 280),
+		def("walking_asymmetry_percentage", "步行不对称性", KindInstant, DayAggMean, CrossAggMean, "%", "qty", "line", 281),
+		def("walking_double_support_percentage", "双脚支撑时间占比", KindInstant, DayAggMean, CrossAggMean, "%", "qty", "line", 282),
+		def("six_minute_walking_test_distance", "六分钟步行距离", KindInstant, DayAggMean, CrossAggMean, "m", "qty", "line", 283),
+		def("stair_speed_up", "上楼速度", KindInstant, DayAggMean, CrossAggMean, "m/s", "qty", "line", 285),
+		def("stair_speed_down", "下楼速度", KindInstant, DayAggMean, CrossAggMean, "m/s", "qty", "line", 286),
 		def("peak_expiratory_flow_rate", "最大呼气流速", KindInstant, DayAggMax, CrossAggMax, "L/min", "qty", "line", 290),
 		def("forced_vital_capacity", "用力肺活量", KindInstant, DayAggMax, CrossAggMax, "L", "qty", "line", 300),
+		def("environmental_audio_exposure", "环境音量", KindInstant, DayAggMean, CrossAggMean, "dBASPL", "qty", "line", 310),
+		def("headphone_audio_exposure", "耳机音量", KindInstant, DayAggMean, CrossAggMean, "dBASPL", "qty", "line", 320),
 
 		// 类别/事件量：日内计数
 		def("handwashing", "洗手次数", KindCategorical, DayAggCount, CrossAggMax, "count", "qty", "bar", 400),

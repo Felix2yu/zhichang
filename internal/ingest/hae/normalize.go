@@ -27,7 +27,11 @@ func Normalize(p *Payload, reg *metric.Registry, home *time.Location) Result {
 	unknown := make(map[string]struct{})
 
 	for _, m := range p.Data.Metrics {
-		name := m.Name
+		// 先收敛到字典的规范名再往下走：样本、同步水位、聚合队列三处都用这个名字。
+		// 不收敛的话同一概念会分裂成两个 metric——字典里的卡片永远空图，
+		// 真实数据堆在另一个名字下（血氧就是这样：导出叫 blood_oxygen_saturation，
+		// 字典叫 oxygen_saturation）。
+		name := metric.Canonical(m.Name)
 		if name == "" {
 			continue
 		}

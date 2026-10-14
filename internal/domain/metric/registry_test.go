@@ -139,35 +139,12 @@ func TestDefaults(t *testing.T) {
 		dupDisplay[d.DisplayNameZH] = append(dupDisplay[d.DisplayNameZH], d.Metric)
 	}
 
-	// 中文名重复是刻意的：HAE 对同一概念有两种导出名，两者都要能落进同一口径。
-	pairs := map[string]string{
-		"体重":      "weight_&_body_mass",
-		"步行+跑步距离": "distance_walking_running",
-	}
-	for zh, alias := range pairs {
-		names := dupDisplay[zh]
-		if len(names) != 2 {
-			t.Fatalf("中文名 %q 应有 2 个指标（原始名 + HAE 别名），实际 %v", zh, names)
-		}
-		found := false
-		for _, n := range names {
-			if n == alias {
-				found = true
-			}
-		}
-		if !found {
-			t.Fatalf("中文名 %q 的别名 %q 缺失，实际 %v", zh, alias, names)
-		}
-	}
-	// 除上述有意重复外，其余中文名唯一。
+	// 中文名必须唯一：一个概念只登记一条。
+	// 上游的多种导出名由 alias.go 的别名表在入库时收敛，不靠「重复登记两条」兜底——
+	// 那样做趋势页会出现两个同名 chip，其中一个永远无数据。
 	for zh, names := range dupDisplay {
-		if len(names) > 2 {
-			t.Errorf("中文名 %q 被 %d 个指标共用: %v", zh, len(names), names)
-		}
-		if len(names) == 2 {
-			if _, ok := pairs[zh]; !ok {
-				t.Errorf("未预期的重复中文名 %q: %v", zh, names)
-			}
+		if len(names) > 1 {
+			t.Errorf("中文名 %q 被 %d 个指标共用: %v；别名请在 alias.go 里收敛", zh, len(names), names)
 		}
 	}
 }
