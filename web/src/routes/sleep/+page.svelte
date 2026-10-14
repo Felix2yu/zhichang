@@ -15,6 +15,7 @@
 		bandOf,
 		collapseNights,
 		computeSleepScores,
+		bedtimeMinutes,
 		minutesToClock,
 		type SleepScore
 	} from '#lib/sleep-score';
@@ -182,6 +183,43 @@
 	let nightRow = $derived(rows.find((r) => r.local_date === night) ?? null);
 	let nightScore = $derived(scores.find((s) => s.local_date === night) ?? null);
 	let nightHrRow = $derived(nightIdx.get(nightKey(DEFAULT_NIGHT_METRIC, night)) ?? null);
+
+	/**
+	 * 这一晚的时刻概览：入睡 / 起床 / 睡眠中点 / 入睡后清醒。
+	 * 时刻都用「相对 18:00 的分钟」表达，跨零点自然顺延（23:30→330、07:00→780）。
+	 */
+	let nightClockLine = $derived.by(() => {
+		const r = nightRow;
+		if (!r) return [] as { k: string; v: string; hint?: string }[];
+		const tz = r.tz_offset_min ?? 0;
+		const bed = r.sleep_start ? bedtimeMinutes(r.sleep_start, tz) : null;
+		const wake = r.sleep_end ? bedtimeMinutes(r.sleep_end, tz) : null;
+		const items: { k: string; v: string; hint?: string }[] = [];
+		if (bed !== null) items.push({ k: 'bed', v: `${minutesToClock(bed)} 入睡` });
+		if (wake !== null) items.push({ k: 'wake', v: `${minutesToClock(wake)} 起床` });
+		if (bed !== null && wake !== null && wake > bed) {
+			items.push({
+				k: 'mid',
+				v: `中点 ${minutesToClock((bed + wake) / 2)}`,
+				hint: '入睡与起床的正中间：中点越晚说明睡眠时段整体后移'
+			});
+		}
+		if (r.waso_hr != null) {
+			const mins = Math.round(r.waso_hr * 60);
+			items.push({
+				k: 'waso',
+				v: `入睡后清醒 ${mins} 分${r.awake_count != null ? ` · ${r.awake_count} 次` : ''}`,
+				hint: '只算睡着之后的清醒，不含躺下到睡着之间的那段'
+			});
+		} else if (r.awake_hr != null) {
+			items.push({
+				k: 'awake',
+				v: `清醒 ${Math.round(r.awake_hr * 60)} 分`,
+				hint: '导出未含分段数据，只能给整晚清醒合计（含入睡前）'
+			});
+		}
+		return items;
+	});
 
 	/** URL 是这一屏的真相：?date= 看哪一晚、?days= 看多大范围，链接可直接分享 */
 	function readUrl() {
@@ -662,6 +700,13 @@
 			{/if}
 		</div>
 
+		{#if nightClockLine.length > 0}
+			<div class="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--color-ink-500)]">
+				{#each nightClockLine as it (it.k)}
+					<span {...(it.hint ? { title: it.hint } : {})}>{it.v}</span>
+				{/each}
+			</div>
+		{/if}
 		{#if stageError}
 			<div class="text-[12px] text-[#a32d2d]">{stageError}</div>
 		{:else if stageLoading}

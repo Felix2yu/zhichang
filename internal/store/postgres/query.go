@@ -193,6 +193,9 @@ type SleepRow struct {
 	InBedHr      *float64 `json:"in_bed_hr,omitempty"`
 	TZOffsetMin  int      `json:"tz_offset_min"`
 	AwakeCount   *int     `json:"awake_count,omitempty"`
+	// WasoHr 是「入睡后清醒」时长（小时）：入睡时间窗内清醒分段的合计。
+	// 与 awake_hr 的区别是它不含入睡前躺着的那段清醒；没有分段数据时为 nil。
+	WasoHr *float64 `json:"waso_hr,omitempty"`
 }
 
 // SleepRange 读取区间内的睡眠记录。
@@ -205,19 +208,31 @@ func (db *DB) SleepRange(ctx context.Context, from, to string) ([]SleepRow, erro
 	if err != nil {
 		return nil, err
 	}
-	// awake_count 用「入床时间窗内的睡眠分段样本」统计：
+	// awake_count / waso_hr 用「入睡时间窗内的睡眠分段样本」统计：
 	// 分段样本的 local_date 落在各段自身的起始日，跨零点后会与睡眠会话的 local_date
 	// （以 sleepStart 为准）错开一天，因此按时间窗而不是按 local_date 关联。
-	rows, err := db.Pool.Query(ctx, `SELECT local_date, source, sleep_start, sleep_end, in_bed_start, in_bed_end,
+	// 两个值出自同一次扫描（LATERAL），窗口内没有分段时一起回 NULL。
+	// waso_hr 是「入睡后清醒」：窗口起点就是入睡时刻，所以入睡前的清醒天然不计入。
+	rows, err := db.Pool.Query(ctx, `SELECT s.local_date, s.source, s.sleep_start, s.sleep_end, s.in_bed_start, s.in_bed_end,
 			s.total_sleep_hr, s.asleep_hr, s.core_hr, s.deep_hr, s.rem_hr, s.awake_hr, s.in_bed_hr, s.tz_offset_min,
-			(SELECT CASE WHEN count(*) = 0 THEN NULL
-			             ELSE count(*) FILTER (WHERE lower(coalesce(p.meta->>'stage', '')) LIKE '%awake%'
-			                                      OR coalesce(p.meta->>'stage', '') LIKE '%醒%') END
-			   FROM samples p
-			  WHERE p.metric = 'sleep_analysis'
-			    AND s.sleep_start IS NOT NULL AND s.sleep_end IS NOT NULL
-			    AND p.start_time >= s.sleep_start AND p.start_time < s.sleep_end)
-		FROM sleep_sessions s WHERE s.local_date BETWEEN $1 AND $2 ORDER BY s.local_date`, fd, td)
+			CASE WHEN a.seg_count IS NULL OR a.seg_count = 0 THEN NULL ELSE a.awake_count END,
+			CASE WHEN a.seg_count IS NULL OR a.seg_count = 0 THEN NULL ELSE a.waso_hr END
+		FROM sleep_sessions s
+		LEFT JOIN LATERAL (
+			SELECT count(*) AS seg_count,
+				count(*) FILTER (WHERE x.is_awake) AS awake_count,
+				coalesce(sum(x.value) FILTER (WHERE x.is_awake), 0) AS waso_hr
+			FROM (
+				SELECT p.value,
+					lower(coalesce(p.meta->>'stage', '')) LIKE '%awake%'
+					OR coalesce(p.meta->>'stage', '') LIKE '%醒%' AS is_awake
+				FROM samples p
+				WHERE p.metric = 'sleep_analysis'
+				  AND s.sleep_start IS NOT NULL AND s.sleep_end IS NOT NULL
+				  AND p.start_time >= s.sleep_start AND p.start_time < s.sleep_end
+			) x
+		) a ON true
+		WHERE s.local_date BETWEEN $1 AND $2 ORDER BY s.local_date`, fd, td)
 	if err != nil {
 		return nil, err
 	}
@@ -227,9 +242,11 @@ func (db *DB) SleepRange(ctx context.Context, from, to string) ([]SleepRow, erro
 		var r SleepRow
 		var ld pgtype.Date
 		var ss, se, bs, be *time.Time
-		if err := rows.Scan(&ld, &r.Source, &ss, &se, &bs, &be, &r.TotalSleepHr, &r.AsleepHr, &r.CoreHr, &r.DeepHr, &r.RemHr, &r.AwakeHr, &r.InBedHr, &r.TZOffsetMin, &r.AwakeCount); err != nil {
+		var waso *float64
+		if err := rows.Scan(&ld, &r.Source, &ss, &se, &bs, &be, &r.TotalSleepHr, &r.AsleepHr, &r.CoreHr, &r.DeepHr, &r.RemHr, &r.AwakeHr, &r.InBedHr, &r.TZOffsetMin, &r.AwakeCount, &waso); err != nil {
 			return nil, err
 		}
+		r.WasoHr = waso
 		r.LocalDate = ld.Time.Format("2006-01-02")
 		if ss != nil {
 			s := ss.UTC().Format(time.RFC3339)
