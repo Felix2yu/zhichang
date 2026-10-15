@@ -3,12 +3,15 @@
 	import { api, type WorkoutRow } from '#lib/api';
 	import { lastDays, type Range } from '#lib/range';
 	import RangePicker from '#lib/components/RangePicker.svelte';
+	import WorkoutDetail from '#lib/components/WorkoutDetail.svelte';
 	import { prefs, formatDuration } from '#lib/prefs.svelte';
 
 	let range = $state<Range>(lastDays(prefs.rangeDays));
 	let rows = $state<WorkoutRow[]>([]);
 	let loading = $state(true);
 	let error = $state('');
+	// 点开的那次运动：轨迹与逐点心率只在点开时才取（一次列表 100+ 条，全取就是几百次请求）
+	let open = $state<WorkoutRow | null>(null);
 
 	let totalMin = $derived(rows.reduce((s, r) => s + r.duration_min, 0));
 	/**
@@ -48,6 +51,9 @@
 		loading = true;
 		try {
 			rows = (await api.workouts(range.from, range.to)).rows;
+			// 换区间后原来点开的那条可能已经不在列表里了，别留一个看不见的选中态
+			const picked = open;
+			if (picked && !rows.some((r) => r.id === picked.id)) open = null;
 			error = '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -128,7 +134,12 @@
 			</thead>
 			<tbody>
 				{#each rows as r (r.id)}
-					<tr class="border-t border-[var(--color-line)]">
+					<tr
+						class="cursor-pointer border-t border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"
+						class:bg-[var(--color-surface-3)]={open?.id === r.id}
+						title="查看轨迹与逐点心率"
+						onclick={() => (open = open?.id === r.id ? null : r)}
+					>
 						<td class="num px-4 py-2">{fmtTime(r.start)}</td>
 						<td class="px-4 py-2">{r.name}</td>
 						<td class="num px-4 py-2 text-right">{r.duration_min.toFixed(0)}</td>
@@ -164,4 +175,8 @@
 			</tbody>
 		</table>
 	</div>
+
+	{#if open}
+		<WorkoutDetail workout={open} onclose={() => (open = null)} />
+	{/if}
 </div>

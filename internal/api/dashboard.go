@@ -44,6 +44,7 @@ func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/sleep/night-metrics", d.sleepNightMetrics)
 	r.Get("/api/workouts", d.workouts)
 	r.Get("/api/workouts/series", d.workoutSeries)
+	r.Get("/api/workouts/route", d.workoutRoute)
 	r.Get("/api/ecg", d.ecgRecords)
 	r.Get("/api/ecg/waveform", d.ecgWaveform)
 	r.Get("/api/sources", d.sources)
@@ -390,6 +391,28 @@ func (d *Dashboard) workoutSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, s)
+}
+
+// workoutRoute 返回一条运动的轨迹折线（本机 GPX 导入的那份数据）。
+//
+// 没有轨迹回 404 而不是空数组：界面上要能分清「这次运动没导轨迹」与
+// 「导了但一个点都没有」，前者是常态（只有带路线的记录才有 GPX）。
+func (d *Dashboard) workoutRoute(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+	if err != nil || id <= 0 {
+		WriteError(w, http.StatusBadRequest, "id 缺失或非法")
+		return
+	}
+	route, err := d.db.RouteFor(r.Context(), id)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if route == nil {
+		WriteError(w, http.StatusNotFound, "这条运动没有导入轨迹")
+		return
+	}
+	WriteJSON(w, http.StatusOK, route)
 }
 
 func (d *Dashboard) sources(w http.ResponseWriter, r *http.Request) {

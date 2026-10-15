@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -97,6 +98,62 @@ func (db *DB) RouteFingerprint(ctx context.Context, workoutID int64) (string, er
 	return sha, nil
 }
 
+// RouteRow 是一条运动轨迹，画地图用的完整数据。
+//
+// 与 workout_series 分开取：列表页只要「有没有轨迹、多少个点」，
+// 折线本体只在用户真的点开某次运动时才读一次。
+type RouteRow struct {
+	WorkoutID int64     `json:"workout_id"`
+	FileName  string    `json:"file_name"`
+	Points    int       `json:"points"`
+	Start     string    `json:"start"` // 第一个点的绝对时刻（RFC3339 UTC）
+	End       string    `json:"end"`
+	Lats      []float64 `json:"lats"`
+	Lons      []float64 `json:"lons"`
+	Eles      []float64 `json:"eles"`
+	AtSecs    []int32   `json:"at_secs"` // 相对第一个点的秒数；绝对时刻 = start + at_secs[i]
+	SrcLatMin float64   `json:"lat_min"`
+	SrcLatMax float64   `json:"lat_max"`
+	SrcLonMin float64   `json:"lon_min"`
+	SrcLonMax float64   `json:"lon_max"`
+	ElevMin   float64   `json:"elev_min"`
+	ElevMax   float64   `json:"elev_max"`
+}
+
+// RouteFor 读取一条运动的轨迹。没有轨迹时回 (nil, nil)——
+// 「没导过 GPX」是常态而不是错误，端点据此回 404，界面显示一句说明。
+func (db *DB) RouteFor(ctx context.Context, workoutID int64) (*RouteRow, error) {
+	var (
+		r       RouteRow
+		start   time.Time
+		end     time.Time
+		elevMin *float64
+		elevMax *float64
+	)
+	err := db.Pool.QueryRow(ctx, `SELECT workout_id, file_name, point_count, start_time, end_time,
+			lats, lons, eles, at_secs, lat_min, lat_max, lon_min, lon_max, elev_min, elev_max
+		FROM workout_routes WHERE workout_id = $1`, workoutID).
+		Scan(&r.WorkoutID, &r.FileName, &r.Points, &start, &end,
+			&r.Lats, &r.Lons, &r.Eles, &r.AtSecs,
+			&r.SrcLatMin, &r.SrcLatMax, &r.SrcLonMin, &r.SrcLonMax, &elevMin, &elevMax)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.Start = start.UTC().Format(time.RFC3339)
+	r.End = end.UTC().Format(time.RFC3339)
+	if elevMin != nil {
+		r.ElevMin = *elevMin
+	}
+	if elevMax != nil {
+		r.ElevMax = *elevMax
+	}
+	return &r, nil
+}
+
+// minMax 返回一维数组的最小/最大值；空数组回 (0,0)。
 func minMax(xs []float64) (float64, float64) {
 	if len(xs) == 0 {
 		return 0, 0

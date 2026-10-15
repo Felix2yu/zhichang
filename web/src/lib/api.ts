@@ -308,6 +308,25 @@ export type SyncRun = {
 	error?: string;
 };
 
+/** 一条运动的轨迹折线（本机 GPX 导入的那份数据） */
+export type WorkoutRoute = {
+	workout_id: number;
+	file_name: string;
+	points: number;
+	start: string;
+	end: string;
+	lats: number[];
+	lons: number[];
+	eles: number[];
+	at_secs: number[];
+	lat_min: number;
+	lat_max: number;
+	lon_min: number;
+	lon_max: number;
+	elev_min: number;
+	elev_max: number;
+};
+
 /** 一次投递落下的事件条数（运动 / 睡眠 / 心电）；全为 0 时返回空串。 */
 export function eventCounts(r: SyncRun): string {
 	const parts: string[] = [];
@@ -351,6 +370,19 @@ async function get<T>(path: string, init?: RequestInit): Promise<T> {
 // 所以在数据入口统一兜底成空数组。
 function arr<T>(v: T[] | null | undefined): T[] {
 	return Array.isArray(v) ? v : [];
+}
+
+/**
+ * 读取轨迹。404 翻成 null 而不是抛错：
+ * 「这次运动没导过 GPX」是常态（只有带路线的记录才有），界面要显示一句说明，
+ * 而不是把「点开详情」这个动作变成一次报错。
+ */
+async function fetchRoute(id: number): Promise<WorkoutRoute | null> {
+	const res = await fetch(`/api/workouts/route?id=${id}`, { headers: { accept: 'application/json' } });
+	if (res.status === 404) return null;
+	if (!res.ok) throw new Error(`/api/workouts/route 请求失败: ${res.status}`);
+	const r = (await res.json()) as WorkoutRoute;
+	return { ...r, lats: arr(r.lats), lons: arr(r.lons), eles: arr(r.eles), at_secs: arr(r.at_secs) };
 }
 
 /** 带设置令牌的写入，成功后回读整表（服务端本来就整表返回，省一次往返）。
@@ -439,6 +471,7 @@ export const api = {
 		const r = await get<{ rows: WorkoutRow[] }>(`/api/workouts?from=${from}&to=${to}`);
 		return { ...r, rows: arr(r.rows) };
 	},
+	workoutRoute: (id: number) => fetchRoute(id),
 	/** 一条运动的逐点心率 / 恢复心率 / 分段 / 轨迹摘要（没有曲线时后端回空数组） */
 	workoutSeries: async (id: number) => {
 		const r = await get<WorkoutSeries>(`/api/workouts/series?id=${id}`);
