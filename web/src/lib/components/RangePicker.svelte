@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Segmented from './Segmented.svelte';
+
 	type Props = {
 		value: number;
 		options?: { label: string; days: number }[];
@@ -17,15 +19,4 @@
 	let items = $derived(options ?? defaults);
 </script>
 
-<div class="inline-flex overflow-hidden rounded-md border border-[var(--color-line)] bg-white">
-	{#each items as it (it.days)}
-		<button
-			class="px-3 py-1.5 text-[12px] transition-colors {value === it.days
-				? 'bg-[var(--color-brand-soft)] text-[var(--color-brand)]'
-				: 'text-[var(--color-ink-700)] hover:bg-[var(--color-line)]/50'}"
-			onclick={() => onchange(it.days)}
-		>
-			{it.label}
-		</button>
-	{/each}
-</div>
+<Segmented value={value} options={items.map((it) => ({ label: it.label, value: it.days }))} {onchange} />

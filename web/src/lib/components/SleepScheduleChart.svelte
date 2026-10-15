@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import * as echarts from 'echarts';
 	import { STAGE_META, stageLabel, stageMeta } from '#lib/sleep-stages';
+	import { dataColor, palette } from '#lib/theme.svelte';
 	import type { NightStages } from '#lib/api';
 
 	type Props = {
@@ -64,6 +65,7 @@
 	}
 
 	function buildOption(): echarts.EChartsOption {
+		const p = palette();
 		// 新夜在上：与下方明细表的排序方向一致
 		const labels = rows.map((r) => r.date.slice(5)).reverse();
 		return {
@@ -71,20 +73,20 @@
 			grid: { left: 52, right: 16, top: 8, bottom: 26 },
 			tooltip: {
 				trigger: 'item',
-				backgroundColor: '#fff',
-				borderColor: '#e6e8ec',
+				backgroundColor: p.surface,
+				borderColor: p.line,
 				borderWidth: 1,
-				textStyle: { color: '#16181d', fontSize: 12 },
-				formatter: (p) => {
-					const d = (p as { data?: number[] }).data;
+				textStyle: { color: p.ink, fontSize: 12 },
+				formatter: (params) => {
+					const d = (params as { data?: number[] }).data;
 					if (!d) return '';
 					const row = rows[rows.length - 1 - d[0]];
 					const seg = row?.segs[d[1]];
 					if (!row || !seg) return '';
 					const mins = Math.round(seg.duration_min);
-					return `<div style="font-size:12px;color:#16181d;line-height:1.6">
+					return `<div style="font-size:12px;color:${p.ink};line-height:1.6">
 						<b>${stageLabel(seg.stage)}</b> · ${row.date}<br/>
-						<span style="color:#6b7280">${clock(seg.x0 + EVENING_ANCHOR)} – ${clock(
+						<span style="color:${p.inkSoft}">${clock(seg.x0 + EVENING_ANCHOR)} – ${clock(
 							seg.x1 + EVENING_ANCHOR
 						)}</span><br/>
 						${mins >= 60 ? `${(mins / 60).toFixed(1)} 小时` : `${mins} 分钟`}
@@ -98,8 +100,8 @@
 				interval: tickInterval,
 				axisLine: { show: false },
 				axisTick: { show: false },
-				splitLine: { show: true, lineStyle: { color: '#f0f1f4' } },
-				axisLabel: { color: '#9aa0a6', fontSize: 10, formatter: (v: number) => clock(v + EVENING_ANCHOR) }
+				splitLine: { show: true, lineStyle: { color: p.split } },
+				axisLabel: { color: p.inkFaint, fontSize: 10, formatter: (v: number) => clock(v + EVENING_ANCHOR) }
 			},
 			yAxis: {
 				type: 'category',
@@ -107,7 +109,7 @@
 				inverse: true,
 				axisLine: { show: false },
 				axisTick: { show: false },
-				axisLabel: { color: '#6b7280', fontSize: 10 },
+				axisLabel: { color: p.inkSoft, fontSize: 10 },
 				splitLine: { show: false }
 			},
 			series: [
@@ -127,7 +129,7 @@
 						return {
 							type: 'rect',
 							shape: { x: x0, y: y - h / 2, width: Math.max(1.5, x1 - x0), height: h, r: 2 },
-							style: { fill: stageMeta(seg.stage).color ?? '#9aa0a6' }
+							style: { fill: dataColor(stageMeta(seg.stage).color ?? p.inkFaint) }
 						};
 					},
 					// data: [行号（y 轴序号，新夜在前）, 段号]
@@ -144,8 +146,8 @@
 		if (!el) return;
 		chart = echarts.init(el, undefined, { renderer: 'canvas' });
 		chart.setOption(buildOption());
-		chart.on('click', (p) => {
-			const d = (p as { data?: number[] }).data;
+		chart.on('click', (params) => {
+			const d = (params as { data?: number[] }).data;
 			if (!Array.isArray(d)) return;
 			const row = rows[rows.length - 1 - d[0]];
 			if (row) onselect?.(row.date);
@@ -180,7 +182,7 @@
 	<div class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--color-ink-500)]">
 		{#each legend as m (m.key)}
 			<span class="inline-flex items-center gap-1.5">
-				<span class="inline-block h-2 w-2 rounded-[2px]" style="background:{m.color}"></span>
+				<span class="inline-block h-2 w-2 rounded-[2px]" style="background:{dataColor(m.color)}"></span>
 				{m.label}
 			</span>
 		{/each}

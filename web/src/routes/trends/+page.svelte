@@ -3,6 +3,7 @@
 	import { flip } from 'svelte/animate';
 	import { api, shiftDays, todayStr, type DailyPoint, type MetricDef } from '#lib/api';
 	import { METRIC_GROUPS, unitDigits, type MetricGroup } from '#lib/metric-groups';
+	import { prefs } from '#lib/prefs.svelte';
 	import {
 		ACTIVITY_WINDOW_DAYS,
 		NO_ACTIVITY,
@@ -18,7 +19,7 @@
 
 	let defs = $state<MetricDef[]>([]);
 	let selected = $state<string[]>(['step_count', 'heart_rate']);
-	let days = $state(30);
+	let days = $state(prefs.rangeDays);
 	let series = $state<Record<string, DailyPoint[]>>({});
 	// 活跃度：按固定 90 天窗口单独评估，与页面时间范围无关（见 metric-activity.ts）。
 	let activity = $state<Record<string, ActivityStats>>({});
@@ -180,7 +181,7 @@
 	</div>
 
 	{#if error}
-		<div class="card px-4 py-3 text-[13px] text-[#a32d2d]">{error}</div>
+		<div class="card px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
 	{/if}
 
 	{#if defs.length === 0}

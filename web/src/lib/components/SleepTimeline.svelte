@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import * as echarts from 'echarts';
 	import { STAGE_META, stageLabel, stageMeta } from '#lib/sleep-stages';
+	import { dataColor, palette } from '#lib/theme.svelte';
 	import type { NightSeries, SleepStageSeg } from '#lib/api';
 
 	type Props = {
@@ -75,6 +76,7 @@
 	}
 
 	function buildOption(): echarts.EChartsOption {
+		const p = palette();
 		// Y 轴只列出这一晚真实出现的阶段（与 Apple 一致：没有深睡就不占那一行）
 		const laneKeys: string[] = STAGE_META.filter(
 			(s) => s.drawn && drawn.some((d) => d.stage === s.key)
@@ -103,25 +105,25 @@
 				: { left: narrow ? 52 : 76, right: narrow ? 30 : 18, top: 10, bottom: 30 },
 			tooltip: {
 				trigger: 'item',
-				backgroundColor: '#fff',
-				borderColor: '#e6e8ec',
+				backgroundColor: p.surface,
+				borderColor: p.line,
 				borderWidth: 1,
-				textStyle: { color: '#16181d', fontSize: 12 },
-				formatter: (p) => {
-					const pp = p as { dataIndex?: number; seriesType?: string; value?: number[] };
+				textStyle: { color: p.ink, fontSize: 12 },
+				formatter: (params) => {
+					const pp = params as { dataIndex?: number; seriesType?: string; value?: number[] };
 					if (ov && pp.seriesType === 'line' && Array.isArray(pp.value)) {
-						return `<div style="font-size:12px;color:#16181d;line-height:1.6">
+						return `<div style="font-size:12px;color:${p.ink};line-height:1.6">
 							<b>${overlayLabel || ov.metric}</b><br/>
-							<span style="color:#6b7280">${clock(pp.value[0])}</span><br/>
+							<span style="color:${p.inkSoft}">${clock(pp.value[0])}</span><br/>
 							${pp.value[1].toFixed(ov.metric === 'heart_rate' ? 0 : 1)} ${ov.unit}
 						</div>`;
 					}
 					const seg = drawn[pp.dataIndex ?? -1];
 					if (!seg) return '';
 					const meta = STAGE_META.find((m) => m.key === seg.stage);
-					return `<div style="font-size:12px;color:#16181d;line-height:1.6">
+					return `<div style="font-size:12px;color:${p.ink};line-height:1.6">
 						<b>${meta?.label ?? seg.stage}</b><br/>
-						<span style="color:#6b7280">${clock(seg.local_min)} – ${clock(
+						<span style="color:${p.inkSoft}">${clock(seg.local_min)} – ${clock(
 							seg.local_min + seg.duration_min
 						)}</span><br/>
 						${fmtDur(seg.duration_min)}
@@ -134,13 +136,13 @@
 						{
 							...axisBase,
 							axisLabel: {
-								color: '#9aa0a6',
+								color: p.inkFaint,
 								fontSize: 10,
 								formatter: (v: number) => clock(v)
 							}
 						}
 					]
-				: { ...axisBase, axisLabel: { color: '#9aa0a6', fontSize: 10, formatter: (v: number) => clock(v) } },
+				: { ...axisBase, axisLabel: { color: p.inkFaint, fontSize: 10, formatter: (v: number) => clock(v) } },
 			yAxis: [
 				{
 					type: 'category',
@@ -150,13 +152,13 @@
 					axisLine: { show: false },
 					axisTick: { show: false },
 					axisLabel: {
-						color: '#6b7280',
+						color: p.inkSoft,
 						fontSize: narrow ? 10 : 11,
 						formatter: (v: string) => (narrow ? stageMeta(v).short : stageLabel(v))
 					},
 					splitLine: {
 						show: true,
-						lineStyle: { color: '#f0f1f4' }
+						lineStyle: { color: p.split }
 					}
 				},
 				{
@@ -167,13 +169,13 @@
 					show: !!ov,
 					name: ov ? overlayLabel || `${ov.metric} ${ov.unit}` : '',
 					nameLocation: 'end' as const,
-					nameTextStyle: { fontSize: 10, color: '#6b7280', align: 'left' as const },
+					nameTextStyle: { fontSize: 10, color: p.inkSoft, align: 'left' as const },
 					nameGap: 6,
 					axisLine: { show: false },
 					axisTick: { show: false },
 					splitNumber: 2,
-					splitLine: { lineStyle: { color: '#f0f1f4' } },
-					axisLabel: { color: '#9aa0a6', fontSize: 10 }
+					splitLine: { lineStyle: { color: p.split } },
+					axisLabel: { color: p.inkFaint, fontSize: 10 }
 				}
 			],
 			series: [
@@ -204,7 +206,7 @@
 						return {
 							type: 'rect',
 							shape: { x: x0, y, width: w, height: h, r: Math.min(h / 2, 5) },
-							style: { fill: meta?.color ?? '#9aa0a6' }
+							style: { fill: dataColor(meta?.color ?? p.inkFaint) }
 						};
 					}
 				},
@@ -217,8 +219,8 @@
 					sampling: 'lttb',
 					smooth: 0.15,
 					data: ov ? ov.points.map((p) => [p.local_min, p.value]) : [],
-					lineStyle: { width: 1.4, color: ovColor },
-					itemStyle: { color: ovColor },
+					lineStyle: { width: 1.4, color: dataColor(ovColor) },
+					itemStyle: { color: dataColor(ovColor) },
 					// 最低点标出来：Apple 的夜间心率主打的就是这个值
 					markPoint: ov
 						? {
@@ -227,7 +229,7 @@
 								silent: true,
 								label: { show: false },
 								data: [{ name: '最低', coord: [ov.min_local_min, ov.min] }],
-								itemStyle: { color: ovColor }
+								itemStyle: { color: dataColor(ovColor) }
 							}
 						: undefined
 				}

@@ -17,6 +17,14 @@
 		type WorkoutRow
 	} from '#lib/api';
 	import { METRIC_GROUPS, groupOf, unitDigits } from '#lib/metric-groups';
+	import {
+		FOCUS_STORE_KEY,
+		TREND_STORE_KEY,
+		formatDuration,
+		formatDurationHours,
+		prefs
+	} from '#lib/prefs.svelte';
+	import { dataColor } from '#lib/theme.svelte';
 	import FreshnessBar from '#lib/components/FreshnessBar.svelte';
 	import GoalProgress from '#lib/components/GoalProgress.svelte';
 	import MetricCard from '#lib/components/MetricCard.svelte';
@@ -32,10 +40,10 @@
 
 	/** 默认关注的指标：挑长期有数据、且日常波动真能说明问题的四项。 */
 	const DEFAULT_FOCUS = ['step_count', 'active_energy', 'resting_heart_rate', 'heart_rate_variability'];
-	const FOCUS_STORE_KEY = 'zhichang.focus-metrics';
-	const TREND_STORE_KEY = 'zhichang.trend-metrics';
 	const BASELINE_WINDOW = 30;
-	const TREND_DAYS = 30;
+	// 概览的小趋势窗口跟本机「默认区间」偏好走；BASELINE_WINDOW 不跟：
+	// 30 天中位数是「常态」的定义本身，不是口味，跟着改会让人怀疑数字为什么变了。
+	const TREND_DAYS = prefs.rangeDays;
 
 	let defs = $state<MetricDef[]>([]);
 	let focus = $state<string[]>([...DEFAULT_FOCUS]);
@@ -131,9 +139,9 @@
 		const s = latestSleep;
 		if (!s) return null;
 		const parts = [
-			{ key: 'deep', label: '深睡', color: '#274a7d', hr: s.deep_hr },
-			{ key: 'core', label: '核心', color: '#3f7fc4', hr: s.core_hr },
-			{ key: 'rem', label: 'REM', color: '#7cc3e8', hr: s.rem_hr }
+			{ key: 'deep', label: '深睡', color: dataColor('#274a7d'), hr: s.deep_hr },
+			{ key: 'core', label: '核心', color: dataColor('#3f7fc4'), hr: s.core_hr },
+			{ key: 'rem', label: 'REM', color: dataColor('#7cc3e8'), hr: s.rem_hr }
 		];
 		const missing = parts.some((p) => p.hr == null);
 		const total = parts.reduce((a, p) => a + (p.hr ?? 0), 0);
@@ -331,7 +339,7 @@
 	</div>
 
 	{#each errors as e (e)}
-		<div class="card px-4 py-2.5 text-[12px] text-[#a32d2d]">{e}</div>
+		<div class="card px-4 py-2.5 text-[12px] text-[var(--color-danger)]">{e}</div>
 	{/each}
 
 	<!-- 1. 数据新鲜度：自托管管线会静默失效，它是后面所有数字的可信前提 -->
@@ -408,7 +416,7 @@
 		<div class="card p-4">
 			<div class="mb-2.5 flex items-baseline justify-between">
 				<span class="text-[13px] font-medium">今日进度</span>
-				<span class="text-[11px] text-[var(--color-ink-500)]">目标目前可在睡眠页设置</span>
+				<a href="/settings" class="text-[11px] text-[var(--color-brand)] hover:underline">目标在设置页修改</a>
 			</div>
 			<GoalProgress rows={goalRows} />
 		</div>
@@ -424,7 +432,7 @@
 			{#if latestSleep}
 				<div class="flex items-baseline gap-2">
 					<span class="num text-[22px] font-medium">
-						{formatValue(latestSleep.total_sleep_hr ?? null, 'h', 1)}
+						{formatDurationHours(latestSleep.total_sleep_hr)}
 					</span>
 					<span class="text-[12px] text-[var(--color-ink-500)]">
 						{clockOf(latestSleep.sleep_start, latestSleep.tz_offset_min)} → {clockOf(
@@ -443,7 +451,7 @@
 						{#each sleepStructure as p (p.key)}
 							<span>
 								{p.label}
-								<span class="num">{formatValue(p.hr, 'h', 1)}</span>
+								<span class="num">{formatDurationHours(p.hr)}</span>
 							</span>
 						{/each}
 					</div>
@@ -476,7 +484,7 @@
 			<div class="flex items-baseline gap-2">
 				<span class="num text-[22px] font-medium">{workoutSum.count} 次</span>
 				<span class="num text-[12px] text-[var(--color-ink-500)]">
-					共 {Math.round(workoutSum.minutes)} 分钟{#if workoutSum.energy > 0} · {Math.round(
+					共 {formatDuration(workoutSum.minutes)}{#if workoutSum.energy > 0} · {Math.round(
 							workoutSum.energy
 						)}{workoutSum.unit ? ` ${workoutSum.unit}` : ''}{/if}
 				</span>
@@ -495,7 +503,7 @@
 			{#if recentWorkouts.length > 0}
 				{@const last = recentWorkouts[recentWorkouts.length - 1]}
 				<div class="mt-2 truncate text-[11px] text-[var(--color-ink-500)]">
-					最近一次：{last.local_date} {last.name} {Math.round(last.duration_min)} 分钟
+					最近一次：{last.local_date} {last.name} {formatDuration(last.duration_min)}
 				</div>
 			{/if}
 		</div>
@@ -510,7 +518,7 @@
 			<div class="card p-4">
 				<div class="mb-2 flex items-baseline justify-between gap-2">
 					<select
-						class="min-w-0 shrink rounded-md border border-[var(--color-line)] bg-white px-2 py-1 text-[12px] text-[var(--color-ink-700)]"
+						class="min-w-0 shrink rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1 text-[12px] text-[var(--color-ink-700)]"
 						value={metric}
 						onchange={(e) => changeTrend(slot, e.currentTarget.value)}
 					>

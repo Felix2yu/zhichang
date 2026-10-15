@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as echarts from 'echarts';
+	import { dataColor, palette } from '#lib/theme.svelte';
 
 	type Props = {
 		/** 按时间升序的电压值 */
@@ -41,6 +42,7 @@
 	}
 
 	function buildOption(): echarts.EChartsOption {
+		const p = palette();
 		const data = points();
 		// 纵轴对称：心电以基线为中心上下摆动，自动量程会让一条平直的漂移段
 		// 被拉满整个图高，看起来像剧烈波动。
@@ -54,40 +56,40 @@
 			grid: { left: 58, right: 14, top: 16, bottom: 26 },
 			tooltip: {
 				trigger: 'axis',
-				backgroundColor: '#fff',
-				borderColor: '#e6e8ec',
+				backgroundColor: p.surface,
+				borderColor: p.line,
 				borderWidth: 1,
-				textStyle: { color: '#16181d', fontSize: 12 },
+				textStyle: { color: p.ink, fontSize: 12 },
 				formatter: (params) => {
 					const arr = Array.isArray(params) ? params : [params];
-					const p = arr[0] as { value?: [number, number] } | undefined;
-					const v = p?.value;
+					const pp = arr[0] as { value?: [number, number] } | undefined;
+					const v = pp?.value;
 					if (!v) return '';
 					const t = fs ? `${v[0].toFixed(3)} s` : `第 ${v[0]} 点`;
-					return `<div style="font-size:12px;color:#16181d">${t} · <b>${v[1].toFixed(1)}${unit ? ` ${unit}` : ''}</b></div>`;
+					return `<div style="font-size:12px;color:${p.ink}">${t} · <b>${v[1].toFixed(1)}${unit ? ` ${unit}` : ''}</b></div>`;
 				}
 			},
 			xAxis: {
 				type: 'value',
 				name: fs ? '秒' : '采样点',
-				nameTextStyle: { fontSize: 11, color: '#6b7280' },
+				nameTextStyle: { fontSize: 11, color: p.inkSoft },
 				nameGap: 6,
 				min: 0,
 				splitLine: { show: false },
-				axisLine: { lineStyle: { color: '#e6e8ec' } },
-				axisLabel: { color: '#6b7280', fontSize: 11, formatter: (v: number) => (fs ? v.toFixed(0) : String(v)) },
+				axisLine: { lineStyle: { color: p.line } },
+				axisLabel: { color: p.inkSoft, fontSize: 11, formatter: (v: number) => (fs ? v.toFixed(0) : String(v)) },
 				axisTick: { show: false }
 			},
 			yAxis: {
 				type: 'value',
 				name: unit,
-				nameTextStyle: { fontSize: 11, color: '#6b7280', align: 'right' as const },
+				nameTextStyle: { fontSize: 11, color: p.inkSoft, align: 'right' as const },
 				nameGap: 8,
 				min: -bound,
 				max: bound,
 				interval: bound / 2,
-				splitLine: { lineStyle: { color: '#f0f1f4' } },
-				axisLabel: { color: '#6b7280', fontSize: 11 }
+				splitLine: { lineStyle: { color: p.split } },
+				axisLabel: { color: p.inkSoft, fontSize: 11 }
 			},
 			series: [
 				{
@@ -98,12 +100,12 @@
 					// 降采样只在数据点远多于像素时才动手，屏幕上看不出差别，
 					// 但一次绘制从 15360 个点降到几百个。
 					sampling: 'lttb',
-					lineStyle: { width: 1, color: '#0f6e56' },
+					lineStyle: { width: 1, color: dataColor('#0f6e56') },
 					// 基线：心电图判读靠它看抬高/压低
 					markLine: {
 						silent: true,
 						symbol: 'none',
-						lineStyle: { type: 'dashed', color: '#c8ccd4', width: 1 },
+						lineStyle: { type: 'dashed', color: p.line, width: 1 },
 						label: { show: false },
 						data: [{ yAxis: 0 }]
 					}

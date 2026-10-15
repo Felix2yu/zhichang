@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { formatValue } from '#lib/api';
+	import { formatDurationUnit } from '#lib/prefs.svelte';
+	import { dataColor } from '#lib/theme.svelte';
 
 	// 目标进度：把「今天走了多少步 / 离目标还差多少」压成一行一条。
 	//
@@ -25,10 +27,17 @@
 			return {
 				...r,
 				ratio: r.target > 0 ? Math.min(1, value / r.target) : 0,
-				reached: r.value !== null && value >= r.target
+				reached: r.value !== null && value >= r.target,
+				// 时长类指标按本机偏好念（7 小时 48 分），其余仍是「数值 + 单位」
+				valueText: formatDurationUnit(r.value, r.unit) ?? formatValue(r.value, r.unit, r.digits),
+				targetText: formatDurationUnit(r.target, r.unit) ?? formatValue(r.target, r.unit, r.digits)
 			};
 		})
 	);
+
+	// 未达标的进度条底色是语义色（比 brand 浅一档）：类名里的任意色值是编译期定死的，
+	// 换不了暗色，所以走内联样式，由 dataColor() 在暗底上提亮度。
+	const pendingStyle = $derived(`background:${dataColor('#4a9e80')}`);
 </script>
 
 <div class="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -44,12 +53,12 @@
 				<div
 					class="h-full rounded-full transition-[width] duration-300 {g.reached
 						? 'bg-[var(--color-brand)]'
-						: 'bg-[#4a9e80]'}"
-					style="width:{(g.ratio * 100).toFixed(1)}%"
+						: ''}"
+					style="width:{(g.ratio * 100).toFixed(1)}%;{g.reached ? '' : pendingStyle}"
 				></div>
 			</div>
 			<div class="num mt-1 text-[11px] text-[var(--color-ink-500)]">
-				{formatValue(g.value, g.unit, g.digits)} / {formatValue(g.target, g.unit, g.digits)}
+				{g.valueText} / {g.targetText}
 			</div>
 		</div>
 	{/each}

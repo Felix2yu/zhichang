@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { SyncStatus } from '#lib/api';
+	import { dataColor } from '#lib/theme.svelte';
 
 	// 数据新鲜度条：概览页第一屏第一行。
 	//
@@ -35,17 +36,19 @@
 		return 'stale';
 	});
 
-	const dot: Record<string, string> = {
-		fresh: 'bg-[#1d9e75]',
-		lagging: 'bg-[#ba7517]',
-		stale: 'bg-[#a32d2d]',
-		unknown: 'bg-[var(--color-ink-500)]'
-	};
+	// 状态点是语义色：stale 正好是 danger token（暗黑自动翻转），绿/橙没有对应 token。
+	// Tailwind 的任意值类名在编译期就定死、运行时换不了色，所以改用内联样式过 dataColor()。
+	const dot: Record<string, string> = $derived({
+		fresh: `background:${dataColor('#1d9e75')}`,
+		lagging: `background:${dataColor('#ba7517')}`,
+		stale: 'background:var(--color-danger)',
+		unknown: 'background:var(--color-ink-500)'
+	});
 </script>
 
 <div class="card flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2.5 text-[12px]">
 	<span class="flex items-center gap-1.5">
-		<span class="h-2 w-2 shrink-0 rounded-full {dot[level]}"></span>
+		<span class="h-2 w-2 shrink-0 rounded-full" style={dot[level]}></span>
 		<span class="text-[var(--color-ink-700)]">
 			{#if loading}
 				正在读取同步状态…
@@ -67,7 +70,7 @@
 	<span class="flex-1"></span>
 
 	{#if status && status.missing_days.length > 0}
-		<a href="/sync" class="text-[#a32d2d] hover:underline">
+		<a href="/sync" class="text-[var(--color-danger)] hover:underline">
 			近 30 天缺 {status.missing_days.length} 天
 		</a>
 	{/if}

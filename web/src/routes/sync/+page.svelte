@@ -30,7 +30,7 @@
 	<h1 class="text-[15px] font-medium">数据源与同步</h1>
 
 	{#if error}
-		<div class="card px-4 py-3 text-[13px] text-[#a32d2d]">{error}</div>
+		<div class="card px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
 	{/if}
 
 	<div class="grid gap-3 lg:grid-cols-2">
@@ -59,7 +59,7 @@
 			{#if status && (status.missing_days?.length ?? 0) > 0}
 				<div class="flex flex-wrap gap-1.5">
 					{#each status.missing_days ?? [] as d (d)}
-						<span class="rounded bg-[#fcebeb] px-2 py-0.5 text-[11px] text-[#a32d2d]">{d}</span>
+						<span class="rounded bg-[var(--color-danger-soft)] px-2 py-0.5 text-[11px] text-[var(--color-danger)]">{d}</span>
 					{/each}
 				</div>
 			{:else}
@@ -71,7 +71,7 @@
 	<div class="card overflow-hidden">
 		<div class="border-b border-[var(--color-line)] px-4 py-2 text-[13px] font-medium">数据来源</div>
 		<table class="w-full text-[13px]">
-			<thead class="bg-[#fafbfc] text-[12px] text-[var(--color-ink-500)]">
+			<thead class="bg-[var(--color-surface-2)] text-[12px] text-[var(--color-ink-500)]">
 				<tr>
 					<th class="px-4 py-2 text-left font-normal">来源</th>
 					<th class="px-4 py-2 text-left font-normal">设备类别</th>
@@ -103,7 +103,7 @@
 	<div class="card overflow-hidden">
 		<div class="border-b border-[var(--color-line)] px-4 py-2 text-[13px] font-medium">同步记录</div>
 		<table class="w-full text-[13px]">
-			<thead class="bg-[#fafbfc] text-[12px] text-[var(--color-ink-500)]">
+			<thead class="bg-[var(--color-surface-2)] text-[12px] text-[var(--color-ink-500)]">
 				<tr>
 					<th class="px-4 py-2 text-left font-normal">时间</th>
 					<th class="px-4 py-2 text-left font-normal">自动化</th>

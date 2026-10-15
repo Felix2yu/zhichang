@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import * as echarts from 'echarts';
 	import type { WeekdayRhythm } from '#lib/sleep-rhythm';
+	import { dataColor, palette } from '#lib/theme.svelte';
 
 	type Props = {
 		byWeekday: WeekdayRhythm[];
@@ -59,30 +60,31 @@
 	const WAKE_COLOR = '#ba7517';
 
 	function buildOption(): echarts.EChartsOption {
+		const p = palette();
 		const narrow = width > 0 && width < 420;
 		return {
 			animation: false,
 			grid: { left: narrow ? 42 : 56, right: 16, top: 26, bottom: 30 },
 			tooltip: {
 				trigger: 'item',
-				backgroundColor: '#fff',
-				borderColor: '#e6e8ec',
+				backgroundColor: p.surface,
+				borderColor: p.line,
 				borderWidth: 1,
-				textStyle: { color: '#16181d', fontSize: 12 },
-				formatter: (p) => {
-					const pp = p as { dataIndex?: number };
+				textStyle: { color: p.ink, fontSize: 12 },
+				formatter: (params) => {
+					const pp = params as { dataIndex?: number };
 					const w = lanes[pp.dataIndex ?? -1];
 					if (!w) return '';
 					const hrs = w.sleepHr === null ? '—' : `${w.sleepHr.toFixed(1)} h`;
 					const spread =
 						w.bedtimeSpreadMin === null ? '—' : `±${Math.round(w.bedtimeSpreadMin)} 分钟`;
-					return `<div style="font-size:12px;color:#16181d;line-height:1.6">
+					return `<div style="font-size:12px;color:${p.ink};line-height:1.6">
 						<b>${w.label}</b> · ${w.nights} 晚<br/>
-						<span style="color:#6b7280">就寝</span> ${axisClock(bedToAxis(w.bedtimeMin!))}
+						<span style="color:${p.inkSoft}">就寝</span> ${axisClock(bedToAxis(w.bedtimeMin!))}
 						（离散 ${spread}）<br/>
-						<span style="color:#6b7280">起床</span> ${
+						<span style="color:${p.inkSoft}">起床</span> ${
 							w.wakeMin === null ? '—' : axisClock(wakeToAxis(w.wakeMin))
-						}　<span style="color:#6b7280">时长</span> ${hrs}
+						}　<span style="color:${p.inkSoft}">时长</span> ${hrs}
 					</div>`;
 				}
 			},
@@ -91,7 +93,7 @@
 				right: 0,
 				itemWidth: 10,
 				itemHeight: 8,
-				textStyle: { fontSize: 11, color: '#6b7280' },
+				textStyle: { fontSize: 11, color: p.inkSoft },
 				data: ['就寝时刻', '起床时刻']
 			},
 			xAxis: {
@@ -99,14 +101,14 @@
 				min: axisRange.min,
 				max: axisRange.max,
 				interval: (axisRange.max - axisRange.min) > 720 ? 120 : 60,
-				axisLine: { lineStyle: { color: '#e6e8ec' } },
+				axisLine: { lineStyle: { color: p.line } },
 				axisTick: { show: false },
 				axisLabel: {
-					color: '#9aa0a6',
+					color: p.inkFaint,
 					fontSize: 10,
 					formatter: (v: number) => axisClock(v)
 				},
-				splitLine: { lineStyle: { color: '#f4f5f7' } }
+				splitLine: { lineStyle: { color: p.split } }
 			},
 			yAxis: {
 				type: 'category',
@@ -114,7 +116,7 @@
 				inverse: true,
 				axisLine: { show: false },
 				axisTick: { show: false },
-				axisLabel: { color: '#6b7280', fontSize: 11 }
+				axisLabel: { color: p.inkSoft, fontSize: 11 }
 			},
 			series: [
 				{
@@ -145,7 +147,7 @@
 								height: barH,
 								r: barH / 2
 							},
-							style: { fill: '#e8edf5' }
+							style: { fill: p.line }
 						};
 					}
 				},
@@ -154,7 +156,7 @@
 					type: 'scatter',
 					z: 2,
 					symbolSize: 11,
-					itemStyle: { color: BED_COLOR },
+					itemStyle: { color: dataColor(BED_COLOR) },
 					data: lanes.map((w) => bedToAxis(w.bedtimeMin!))
 				},
 				{
@@ -162,7 +164,7 @@
 					type: 'scatter',
 					z: 2,
 					symbolSize: 11,
-					itemStyle: { color: WAKE_COLOR },
+					itemStyle: { color: dataColor(WAKE_COLOR) },
 					data: lanes.map((w) => (w.wakeMin === null ? null : wakeToAxis(w.wakeMin)))
 				}
 			]

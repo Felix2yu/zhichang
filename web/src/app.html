@@ -23,6 +23,26 @@
 		<link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 
+		<script>
+			// 预注水定色：Svelte 挂载前就把 data-theme 挂上，
+			// 否则暗黑用户每次进来都要先闪一帧浅色底。逻辑与 lib/theme.svelte.ts 一致，
+			// 这里只读不写——偏好仍然是应用内改、这里只负责首屏别错色。
+			(function () {
+				var pref = 'system';
+				try {
+					pref = localStorage.getItem('zhichang.theme') || 'system';
+				} catch (e) {
+					/* 隐私模式读不到，按跟随系统 */
+				}
+				var dark =
+					pref === 'dark' ||
+					(pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+				document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+				var m = document.querySelector('meta[name="color-scheme"]');
+				if (m) m.setAttribute('content', dark ? 'dark' : 'light');
+			})();
+		</script>
+
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

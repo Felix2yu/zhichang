@@ -219,6 +219,13 @@ export type GoalRow = {
 	updated_at: string;
 };
 
+/** 一条服务端共享的偏好。值一律是文本，语义由键名决定（目前只有 bedtime_target）。 */
+export type AppSetting = {
+	key: string;
+	value: string;
+	updated_at: string;
+};
+
 /** 一条心电记录（不含波形：波形单独一条接口） */
 export type EcgRecord = {
 	id: number;
@@ -301,6 +308,34 @@ function arr<T>(v: T[] | null | undefined): T[] {
 	return Array.isArray(v) ? v : [];
 }
 
+/** 带设置令牌的写入，成功后回读整表（服务端本来就整表返回，省一次往返）。
+ *  503 与 401 分开说：前者是服务端没配令牌，用户重试多少次都一样；
+ *  后者是令牌打错了，改对就能保存。合成一句「保存失败」只会让人反复试。 */
+async function mutate<T>(
+	method: 'PUT' | 'DELETE',
+	path: string,
+	body: string | undefined,
+	token: string,
+	listKey: string
+): Promise<T[]> {
+	const res = await fetch(path, {
+		method,
+		headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+		body
+	});
+	if (!res.ok) {
+		const why =
+			res.status === 503
+				? '服务端未配置 ZHICHANG_SETTINGS_TOKEN，保持只读'
+				: res.status === 401
+					? '设置令牌不正确'
+					: `${res.status}`;
+		throw new Error(`保存失败：${why}`);
+	}
+	const r = (await res.json()) as Record<string, T[] | null | undefined>;
+	return arr(r[listKey]);
+}
+
 export const api = {
 	metrics: async () => {
 		const r = await get<{ timezone: string; metrics: MetricDef[] }>('/api/metrics');
@@ -373,20 +408,32 @@ export const api = {
 		const r = await get<{ goals: GoalRow[] }>('/api/goals');
 		return arr(r.goals);
 	},
-	/** 写入目标：仪表盘唯一的写接口，必须带设置令牌（服务端未配置时回 503） */
-	setGoal: async (metric: string, target: number, token: string) => {
-		const res = await fetch('/api/goals', {
-			method: 'PUT',
-			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-			body: JSON.stringify({ metric, target })
-		});
-		if (!res.ok) {
-			const why = res.status === 503 ? '服务端未配置 ZHICHANG_SETTINGS_TOKEN' : `${res.status}`;
-			throw new Error(`保存失败：${why}`);
-		}
-		const r = (await res.json()) as { goals: GoalRow[] };
-		return arr(r.goals);
+	/** 写入目标：必须带设置令牌（服务端未配置时回 503） */
+	setGoal: (metric: string, target: number, token: string) =>
+		mutate<GoalRow>('PUT', '/api/goals', JSON.stringify({ metric, target }), token, 'goals'),
+	/** 清掉某个指标的目标；服务端是幂等的，不存在也回整表 */
+	deleteGoal: (metric: string, token: string) =>
+		mutate<GoalRow>(
+			'DELETE',
+			`/api/goals?metric=${encodeURIComponent(metric)}`,
+			undefined,
+			token,
+			'goals'
+		),
+	settings: async () => {
+		const r = await get<{ settings: AppSetting[] }>('/api/settings');
+		return arr(r.settings);
 	},
+	setSetting: (key: string, value: string, token: string) =>
+		mutate<AppSetting>('PUT', '/api/settings', JSON.stringify({ key, value }), token, 'settings'),
+	deleteSetting: (key: string, token: string) =>
+		mutate<AppSetting>(
+			'DELETE',
+			`/api/settings?key=${encodeURIComponent(key)}`,
+			undefined,
+			token,
+			'settings'
+		),
 	sources: async () => {
 		const r = await get<{ sources: SourceRow[] }>('/api/sources');
 		return { ...r, sources: arr(r.sources) };

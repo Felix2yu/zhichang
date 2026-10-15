@@ -17,6 +17,7 @@
 		bandOf,
 		collapseNights,
 		computeSleepScores,
+		clockToBedtime,
 		bedtimeMinutes,
 		minutesToClock,
 		type SleepScore
@@ -45,11 +46,13 @@
 	import SleepTimeline from '#lib/components/SleepTimeline.svelte';
 	import SleepScheduleChart from '#lib/components/SleepScheduleChart.svelte';
 	import SleepRhythmChart from '#lib/components/SleepRhythmChart.svelte';
+	import { formatDuration, formatDurationHours, prefs } from '#lib/prefs.svelte';
+	import { dataColor } from '#lib/theme.svelte';
 
 	/** 评分要用你自己的历史做基准（时长 30 晚、就寝 13 晚），故额外多取一段前置窗口 */
 	const LEAD_IN_DAYS = 45;
 
-	let days = $state(30);
+	let days = $state(prefs.rangeDays);
 	let allRows = $state<SleepRow[]>([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -59,7 +62,13 @@
 	let rows = $derived(allRows.filter((r) => r.local_date >= from));
 
 	let nights = $derived(collapseNights(allRows));
-	let scores = $derived(computeSleepScores(nights).filter((s) => s.local_date >= from));
+	/** 设置页定的预期入睡时间（相对 18:00 的分钟）；没设就是 null，评分退回 13 晚中位数口径 */
+	let bedtimeTarget = $state<number | null>(null);
+	let scores = $derived(
+		computeSleepScores(nights, { bedtimeTargetMin: bedtimeTarget }).filter(
+			(s) => s.local_date >= from
+		)
+	);
 
 	// —— 夜间生理指标（按入睡时间窗关联，非 local_date）——
 	let nightRows = $state<NightMetricRow[]>([]);
@@ -73,7 +82,7 @@
 	let nightHrSeries = $derived([
 		{
 			name: '夜间最低',
-			color: '#993556',
+			color: dataColor('#993556'),
 			unit: 'bpm',
 			digits: 0,
 			points: bucketMean(
@@ -84,7 +93,7 @@
 		},
 		{
 			name: '夜间平均',
-			color: '#5a6b8c',
+			color: dataColor('#5a6b8c'),
 			unit: 'bpm',
 			digits: 0,
 			points: bucketMean(
@@ -121,9 +130,9 @@
 	);
 
 	let stageSeries = $derived([
-		{ name: '深睡', type: 'bar' as const, stack: 'sleep', color: '#0c447c', points: bucketMean(dates, rows.map((r) => r.deep_hr), grain) },
-		{ name: '核心', type: 'bar' as const, stack: 'sleep', color: '#378add', points: bucketMean(dates, rows.map((r) => r.core_hr), grain) },
-		{ name: 'REM', type: 'bar' as const, stack: 'sleep', color: '#85b7eb', points: bucketMean(dates, rows.map((r) => r.rem_hr), grain) }
+		{ name: '深睡', type: 'bar' as const, stack: 'sleep', color: dataColor('#0c447c'), points: bucketMean(dates, rows.map((r) => r.deep_hr), grain) },
+		{ name: '核心', type: 'bar' as const, stack: 'sleep', color: dataColor('#378add'), points: bucketMean(dates, rows.map((r) => r.core_hr), grain) },
+		{ name: 'REM', type: 'bar' as const, stack: 'sleep', color: dataColor('#85b7eb'), points: bucketMean(dates, rows.map((r) => r.rem_hr), grain) }
 	]);
 	let totalSeries = $derived([
 		{ name: '总睡眠', points: bucketMean(dates, rows.map((r) => r.total_sleep_hr), grain) }
@@ -131,7 +140,7 @@
 	let scoreSeries = $derived([
 		{
 			name: '睡眠评分',
-			color: '#5a6b8c',
+			color: dataColor('#5a6b8c'),
 			unit: '分',
 			digits: 0,
 			points: bucketMean(
@@ -148,52 +157,13 @@
 	);
 
 	// —— 睡眠目标（服务端 goals 表；没有目标时相关行整块不渲染）——
+	// 这一页只读：改目标统一在设置页，免得同一份数据有两个编辑入口、两套令牌逻辑。
 	let goals = $state<GoalRow[]>([]);
 	let sleepGoal = $derived(goals.find((g) => g.metric === 'sleep_analysis') ?? null);
 	let goalSamples = $derived(rows.filter((r) => r.total_sleep_hr != null).length);
 	let goalHit = $derived(
 		sleepGoal ? rows.filter((r) => (r.total_sleep_hr ?? 0) >= sleepGoal.target).length : 0
 	);
-	let goalEditing = $state(false);
-	let goalDraft = $state('');
-	let goalToken = $state('');
-	let goalBusy = $state(false);
-	let goalMsg = $state('');
-
-	function openGoalEditor() {
-		goalEditing = !goalEditing;
-		if (!goalEditing) return;
-		goalDraft = sleepGoal ? String(sleepGoal.target) : '7.5';
-		// 令牌只在本次会话内留着，不落 localStorage（清标签页就没了）
-		try {
-			goalToken = sessionStorage.getItem('zhichang.settings-token') ?? '';
-		} catch {
-			goalToken = '';
-		}
-	}
-
-	async function saveGoal() {
-		const v = Number(goalDraft);
-		if (!Number.isFinite(v) || v <= 0 || v > 24) {
-			goalMsg = '目标要在 0~24 小时之间';
-			return;
-		}
-		goalBusy = true;
-		goalMsg = '';
-		try {
-			goals = await api.setGoal('sleep_analysis', v, goalToken.trim());
-			try {
-				sessionStorage.setItem('zhichang.settings-token', goalToken.trim());
-			} catch {
-				/* 隐私模式下写不进会话存储，不影响保存 */
-			}
-			goalEditing = false;
-		} catch (e) {
-			goalMsg = e instanceof Error ? e.message : String(e);
-		} finally {
-			goalBusy = false;
-		}
-	}
 
 	/** 三项分解：把评分拆开，让「为什么是这个分」可见（跟着当前查看的夜晚） */
 	let components = $derived.by(() => {
@@ -205,26 +175,26 @@
 				label: '睡眠时长',
 				value: s.duration ?? 0,
 				max: COMPONENT_MAX.duration,
-				color: '#5a6b8c',
-				note: `睡 ${fmtH(s.sleepHr)} · 基准 ${fmtH(s.baselineHr)}`
+				color: dataColor('#5a6b8c'),
+				note: `睡 ${formatDurationHours(s.sleepHr)} · 基准 ${formatDurationHours(s.baselineHr)}`
 			},
 			{
 				key: 'bedtime',
 				label: '就寝规律性',
 				value: s.bedtime ?? 0,
 				max: COMPONENT_MAX.bedtime,
-				color: '#7a6a9c',
+				color: dataColor('#7a6a9c'),
 				note:
 					s.bedtimeMin == null || s.bedtimeBaselineMin == null
 						? '无入睡时刻'
-						: `${minutesToClock(s.bedtimeMin)} 入睡 · 习惯 ${minutesToClock(s.bedtimeBaselineMin)}（差 ${s.bedtimeDeviationMin} 分钟）`
+						: `${minutesToClock(s.bedtimeMin)} 入睡 · ${s.bedtimeBaselineIsTarget ? '目标' : '习惯'} ${minutesToClock(s.bedtimeBaselineMin)}（差 ${s.bedtimeDeviationMin} 分钟）`
 			},
 			{
 				key: 'interruption',
 				label: '中断',
 				value: s.interruption ?? 0,
 				max: COMPONENT_MAX.interruption,
-				color: '#3f7d6b',
+				color: dataColor('#3f7d6b'),
 				note: interruptionNote(s)
 			}
 		];
@@ -232,14 +202,11 @@
 
 	function interruptionNote(s: SleepScore): string {
 		if (s.awakeHr == null) return '无清醒数据，按满分计';
-		const mins = `${Math.round(s.awakeHr * 60)} 分钟`;
+		const mins = formatDuration(s.awakeHr * 60);
 		const head = s.awakeCount != null ? `醒来 ${s.awakeCount} 次 · 共 ${mins}` : `清醒 ${mins}`;
 		return s.interruptionSource === 'in-bed-diff' ? `${head}（在床 − 睡着推算）` : head;
 	}
 
-	function fmtH(v: number | null | undefined): string {
-		return v == null ? '—' : `${v.toFixed(1)} h`;
-	}
 	function cell(v: number | null | undefined, d = 1): string {
 		return v == null ? '—' : v.toFixed(d);
 	}
@@ -294,7 +261,7 @@
 		} else if (r.awake_hr != null) {
 			items.push({
 				k: 'awake',
-				v: `清醒 ${Math.round(r.awake_hr * 60)} 分`,
+				v: `清醒 ${formatDuration(r.awake_hr * 60)}`,
 				hint: '导出未含分段数据，只能给整晚清醒合计（含入睡前）'
 			});
 		}
@@ -388,14 +355,6 @@
 		selectNight(next);
 	}
 
-	function fmtDur(min: number): string {
-		const m = Math.round(min);
-		if (m < 60) return `${m} 分钟`;
-		const h = Math.floor(m / 60);
-		const r = m % 60;
-		return r === 0 ? `${h} 小时` : `${h} 小时 ${r} 分`;
-	}
-
 	// —— 周期性节律 & 睡眠结构 ——
 	// 全部基于已透出的字段计算，不新增后端接口。
 	let rhythm = $derived(computeRhythm(rows as RhythmNight[]));
@@ -421,7 +380,7 @@
 		const v = rhythm.socialJetlagMin;
 		if (v === null) return '样本不足';
 		if (Math.abs(v) < 20) return '周末与工作日基本一致';
-		return v > 0 ? `周末比工作日晚 ${fmtDur(v)}` : `周末比工作日早 ${fmtDur(-v)}`;
+		return v > 0 ? `周末比工作日晚 ${formatDuration(v)}` : `周末比工作日早 ${formatDuration(-v)}`;
 	}
 
 	/** 规律性的人话描述 */
@@ -442,9 +401,9 @@
 	const STRUCTURE_SCALE_MAX = 0.6;
 	let structureRows = $derived.by(() => {
 		const items = [
-			{ key: 'deep', label: '深睡', color: '#274a7d', v: structure.deepRatio, typical: 0.2 },
-			{ key: 'core', label: '核心', color: '#3f7fc4', v: structure.coreRatio, typical: 0.5 },
-			{ key: 'rem', label: 'REM', color: '#7cc3e8', v: structure.remRatio, typical: 0.22 }
+			{ key: 'deep', label: '深睡', color: dataColor('#274a7d'), v: structure.deepRatio, typical: 0.2 },
+			{ key: 'core', label: '核心', color: dataColor('#3f7fc4'), v: structure.coreRatio, typical: 0.5 },
+			{ key: 'rem', label: 'REM', color: dataColor('#7cc3e8'), v: structure.remRatio, typical: 0.22 }
 		];
 		return items.map((it) => {
 			// 浮点噪声别当成差异：差 0.1 个百分点不算「高于典型」
@@ -471,16 +430,18 @@
 			const to = todayStr();
 			// 多取一段前置窗口：评分基准要用到当前范围之前的历史
 			// 夜间指标只要展示范围，不需要前置基准，与图表同一区间才对得齐
-			const [sl, nm, stg, gl] = await Promise.all([
+			const [sl, nm, stg, gl, st] = await Promise.all([
 				api.sleep(shiftDays(-(days + LEAD_IN_DAYS), to), to),
 				api.sleepNightMetrics(from, to),
 				api.sleepStagesRange(from, to),
-				api.goals()
+				api.goals(),
+				api.settings()
 			]);
 			allRows = sl.rows;
 			nightRows = nm.rows;
 			scheduleRows = stg.rows;
 			goals = gl;
+			bedtimeTarget = clockToBedtime(st.find((s) => s.key === 'bedtime_target')?.value ?? '');
 			error = '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -508,7 +469,7 @@
 	</div>
 
 	{#if error}
-		<div class="card px-4 py-3 text-[13px] text-[#a32d2d]">{error}</div>
+		<div class="card px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
 	{/if}
 
 	<!-- 睡眠评分：按 Apple 公开的三项权重复刻（时长 50 + 就寝 30 + 中断 20） -->
@@ -580,11 +541,11 @@
 		<div class="card px-4 py-3">
 			<div class="text-[12px] text-[var(--color-ink-500)]">平均总睡眠</div>
 			<div class="num mt-1 text-[20px] font-medium">
-				{avg === null ? '—' : `${avg.toFixed(1)} h`}
+				{avg === null ? '—' : formatDurationHours(avg)}
 			</div>
 			{#if sleepGoal && goalSamples > 0}
 				<div class="mt-0.5 text-[10px] text-[var(--color-ink-500)]/70">
-					目标 {sleepGoal.target.toFixed(1)} h · 达标 {goalHit}/{goalSamples} 晚
+					目标 {formatDurationHours(sleepGoal.target)} · 达标 {goalHit}/{goalSamples} 晚
 				</div>
 			{/if}
 		</div>
@@ -604,7 +565,7 @@
 		<div class="card px-4 py-3">
 			<div class="text-[12px] text-[var(--color-ink-500)]">记录天数</div>
 			<div class="num mt-1 text-[20px] font-medium">{rows.length}</div>
-			<div class="mt-0.5 text-[10px] {coverage.missing.length > 0 ? 'text-[#8a6d1f]' : 'text-[var(--color-ink-500)]/70'}"
+			<div class="mt-0.5 text-[10px] {coverage.missing.length > 0 ? 'text-[var(--color-warn)]' : 'text-[var(--color-ink-500)]/70'}"
 				title={coverage.missing.length > 0 ? `断档：${coverage.missing.join('、')}` : ''}>
 				{#if coverage.current > 0}
 					当前连续 {coverage.current} 晚 · 最长 {coverage.longest} 晚{coverage.missing.length > 0 ? ` · 断档 ${coverage.missing.length} 晚` : ''}
@@ -724,7 +685,7 @@
 								<div class="h-full rounded-full" style="width:{s.width}%;background:{s.color}"></div>
 								<!-- 典型值参考线 -->
 								<span
-									class="absolute top-1/2 h-2.5 w-px -translate-y-1/2 bg-[#9aa0a6]"
+									class="absolute top-1/2 h-2.5 w-px -translate-y-1/2 bg-[var(--color-ink-400)]"
 									style="left:{s.tickPos}%"
 								></span>
 							</div>
@@ -817,7 +778,7 @@
 			</div>
 		{/if}
 		{#if stageError}
-			<div class="text-[12px] text-[#a32d2d]">{stageError}</div>
+			<div class="text-[12px] text-[var(--color-danger)]">{stageError}</div>
 		{:else if stageLoading}
 			<div class="flex h-[240px] items-center justify-center text-[13px] text-[var(--color-ink-500)]">
 				加载中…
@@ -838,8 +799,8 @@
 						<button
 							class="rounded border px-2 py-0.5 text-[11px]"
 							class:border-[var(--color-line)]={m !== phyActive}
-							class:border-[#9aa0a6]={m === phyActive}
-							class:bg-[#fafbfc]={m === phyActive}
+							class:border-[var(--color-line-strong)]={m === phyActive}
+							class:bg-[var(--color-surface-2)]={m === phyActive}
 							class:text-[var(--color-ink-700)]={m !== phyActive}
 							class:font-medium={m === phyActive}
 							onclick={() => (phyMetric = m)}>{nightMeta(m).label}</button
@@ -861,13 +822,13 @@
 				{#each stageLegend as s (s.key)}
 					<span class="inline-flex items-center gap-1.5">
 						<span class="inline-block h-2 w-2 rounded-[2px]" style="background:{s.color}"></span>
-						{s.label} <span class="num">{fmtDur(s.hours * 60)}</span>
+						{s.label} <span class="num">{formatDuration(s.hours * 60)}</span>
 					</span>
 				{/each}
 				{#if phyOverlay}
 					{@const m = nightMeta(phyOverlay.metric)}
 					<span class="inline-flex items-center gap-1.5">
-						<span class="inline-block h-2 w-2 rounded-full" style="background:#993556"></span>
+						<span class="inline-block h-2 w-2 rounded-full" style="background:{dataColor('#993556')}"></span>
 						{m.label}
 						<span class="num">
 							{Math.round(phyOverlay.min)}–{Math.round(phyOverlay.max)} {m.unit}
@@ -875,7 +836,7 @@
 					</span>
 				{/if}
 				<span class="ml-auto">
-					分期合计 <span class="num">{stageTotalHr.toFixed(1)} h</span>
+					分期合计 <span class="num">{formatDurationHours(stageTotalHr)}</span>
 					{#if stages.source}· 来源 {stages.source}{/if}
 				</span>
 			</div>
@@ -896,51 +857,18 @@
 			<div class="flex flex-wrap items-baseline gap-2 text-[13px] font-medium">
 				总睡眠时长{#if grain !== 'night'}<span class="text-[11px] font-normal text-[var(--color-ink-500)]">· {GRAIN_LABEL[grain]}</span>{/if}
 				{#if sleepGoal}
-					<span class="num text-[11px] font-normal text-[#8a6d1f]">
-						目标 {sleepGoal.target.toFixed(1)} h
+					<span class="num text-[11px] font-normal text-[var(--color-warn)]">
+						目标 {formatDurationHours(sleepGoal.target)}
 					</span>
 				{/if}
 			</div>
-			<button
-				class="rounded border border-[var(--color-line)] px-2 py-0.5 text-[11px] font-normal text-[var(--color-ink-700)]"
-				onclick={openGoalEditor}>{goalEditing ? '收起' : sleepGoal ? '改目标' : '设目标'}</button
+			<a
+				href="/settings"
+				class="rounded border border-[var(--color-line)] px-2 py-0.5 text-[11px] font-normal text-[var(--color-ink-700)] hover:bg-[var(--color-surface-3)]"
 			>
+				{sleepGoal ? '改目标' : '设目标'}
+			</a>
 		</div>
-		{#if goalEditing}
-			<div class="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
-				<label class="flex items-baseline gap-1.5">
-					<span class="text-[var(--color-ink-500)]">每晚目标</span>
-					<input
-						class="num w-16 rounded border border-[var(--color-line)] px-2 py-1 text-[12px]"
-						type="number"
-						step="0.5"
-						min="0.5"
-						max="24"
-						bind:value={goalDraft}
-					/>
-					<span class="text-[var(--color-ink-500)]">小时</span>
-				</label>
-				<label class="flex items-baseline gap-1.5">
-					<span class="text-[var(--color-ink-500)]">设置令牌</span>
-					<input
-						class="w-40 rounded border border-[var(--color-line)] px-2 py-1 text-[12px]"
-						type="password"
-						placeholder="ZHICHANG_SETTINGS_TOKEN"
-						bind:value={goalToken}
-					/>
-				</label>
-				<button
-					class="rounded bg-[#0f6e56] px-3 py-1 text-[11px] text-white disabled:opacity-50"
-					disabled={goalBusy}
-					onclick={saveGoal}>{goalBusy ? '保存中…' : '保存'}</button
-				>
-				{#if goalMsg}<span class="text-[#a32d2d]">{goalMsg}</span>{/if}
-			</div>
-			<div class="mb-2 text-[10px] leading-relaxed text-[var(--color-ink-500)]/80">
-				令牌由服务端环境变量 ZHICHANG_SETTINGS_TOKEN 配置，只留在本次标签页内；
-				没配置时保存会提示 503，目标保持只读。
-			</div>
-		{/if}
 		{#if !loading}
 			<TrendChart
 				series={totalSeries}
@@ -948,7 +876,7 @@
 				unit="h"
 				digits={1}
 				targetLine={sleepGoal
-					? { value: sleepGoal.target, label: `目标 ${sleepGoal.target.toFixed(1)} h` }
+					? { value: sleepGoal.target, label: `目标 ${formatDurationHours(sleepGoal.target)}` }
 					: null}
 			/>
 		{/if}
@@ -957,7 +885,7 @@
 	<div class="card overflow-hidden">
 		<div class="overflow-x-auto">
 			<table class="w-full text-[13px] {hasNightHr ? 'min-w-[700px]' : 'min-w-[620px]'}">
-				<thead class="bg-[#fafbfc] text-[12px] text-[var(--color-ink-500)]">
+				<thead class="bg-[var(--color-surface-2)] text-[12px] text-[var(--color-ink-500)]">
 					<tr>
 						<th class="px-4 py-2 text-left font-normal">日期</th>
 						<th class="px-4 py-2 text-right font-normal">总睡眠 (h)</th>
@@ -975,8 +903,8 @@
 				<tbody>
 					{#each [...rows].reverse() as r (r.local_date + r.source)}
 						<tr
-							class="cursor-pointer border-t border-[var(--color-line)] hover:bg-[#fafbfc]"
-							class:bg-[#f2f6fb]={r.local_date === night}
+							class="cursor-pointer border-t border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"
+							class:bg-[var(--color-surface-3)]={r.local_date === night}
 							title="查看这一晚"
 							onclick={() => selectNight(r.local_date)}
 						>
