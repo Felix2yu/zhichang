@@ -270,7 +270,97 @@ func normalizeWorkout(w Workout, home *time.Location) (sample.Workout, bool) {
 		wo.TotalDistance = &v
 		wo.DistanceUnit = u
 	}
+	// 主动能量单独存一份：Apple 运动记录里的「消耗」是主动能量，
+	// totalEnergy 含基础代谢，只留总能量会让运动页比健康 App 高出约三成。
+	if w.ActiveEnergy.Qty.Set {
+		v, u := metric.ConvertUnit(w.ActiveEnergy.Qty.Value, w.ActiveEnergy.Units, workoutEnergyUnit)
+		wo.ActiveEnergy = &v
+		wo.ActiveUnit = u
+	}
+	wo.AvgHR = qtyOrNil(w.AvgHeartRate)
+	wo.MaxHR = qtyOrNil(w.MaxHeartRate)
+	wo.EffortScore = qtyOrNil(w.EffortScore)
+	wo.HR = seriesPoints(w.HeartRateData, st, home)
+	wo.Recovery = seriesPoints(w.Recovery, st, home)
+	if len(w.Splits) > 0 && string(w.Splits) != "null" {
+		wo.Splits = append([]byte(nil), w.Splits...)
+	}
+	wo.Meta = workoutMeta(w)
 	return wo, true
+}
+
+// qtyOrNil 取带单位数量里的数值，缺失返回 nil（落库为 NULL，而不是 0）。
+func qtyOrNil(q Quantity) *float64 {
+	if !q.Qty.Set {
+		return nil
+	}
+	v := q.Qty.Value
+	return &v
+}
+
+// seriesPoints 把逐点采样换成「相对运动起点的秒数 + 值」，按输入顺序。
+//
+// 解析不了时间或没有数值的点直接跳过：这里存的是显式秒数（不像心电那样按索引推时轴），
+// 所以少一个点只少一个点，不会让后面的点全部错位。
+//
+// 早于运动起点的点**保留**（相对秒数为负）：实测上游的第一点心率常比运动开始时刻早几十秒
+// （手表先开始记心率、后开始计时），按「不能为负」丢掉就是白丢数据——一年 69 个点。
+// 读出来的一侧用 start_time + at_sec 还原绝对时刻，负偏移天然成立。
+func seriesPoints(pts Series, start time.Time, home *time.Location) []sample.WorkoutPoint {
+	if len(pts) == 0 {
+		return nil
+	}
+	out := make([]sample.WorkoutPoint, 0, len(pts))
+	for _, p := range pts {
+		if !p.Avg.Set || p.Date == "" {
+			continue
+		}
+		t, _, ok := tz.ParseWithFallback(p.Date, home)
+		if !ok {
+			continue
+		}
+		out = append(out, sample.WorkoutPoint{AtSec: int32(t.Sub(start).Seconds()), Value: p.Avg.Value})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// workoutMeta 收的是「只用于核对与展示、不参与聚合」的上下文。
+//
+// 速度类字段连上游单位一起原样存：实测 HAE 给 avgSpeed 的单位串写的是 "km"
+// 而值是 km/hr 量级。单位口径存疑时保留原文比猜一个换算更危险——
+// 换算错了没人看得出来，原样留着至少核对时对得上。
+func workoutMeta(w Workout) map[string]any {
+	m := map[string]any{}
+	put := func(k string, q Quantity) {
+		if !q.Qty.Set {
+			return
+		}
+		m[k] = q.Qty.Value
+		if q.Units != "" {
+			m[k+"_unit"] = q.Units
+		}
+	}
+	put("basal_energy", w.BasalEnergy)
+	put("flights", w.Flights)
+	put("elevation_up", w.ElevationUp)
+	put("elevation_down", w.ElevationDown)
+	put("temperature", w.Temperature)
+	put("humidity", w.Humidity)
+	put("avg_speed", w.AvgSpeed)
+	put("max_speed", w.MaxSpeed)
+	if w.Indoor.Set {
+		m["indoor"] = w.Indoor.Value
+	}
+	if w.Place != "" {
+		m["location"] = string(w.Place)
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 // workoutDurationMin 把 duration 字段换算成分钟。

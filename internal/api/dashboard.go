@@ -43,6 +43,7 @@ func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/sleep/stages/range", d.sleepStagesRange)
 	r.Get("/api/sleep/night-metrics", d.sleepNightMetrics)
 	r.Get("/api/workouts", d.workouts)
+	r.Get("/api/workouts/series", d.workoutSeries)
 	r.Get("/api/ecg", d.ecgRecords)
 	r.Get("/api/ecg/waveform", d.ecgWaveform)
 	r.Get("/api/sources", d.sources)
@@ -366,6 +367,29 @@ func (d *Dashboard) workouts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "rows": rows})
+}
+
+// workoutSeries 返回一条运动的逐点心率、运动后恢复心率、分段原文与轨迹摘要。
+//
+// 单独一条端点而不是塞进 /api/workouts：曲线是数组，列表页一次要读几十条运动，
+// 把曲线跟着列表返回会让列表查询付出它根本用不到的开销（与心电波形分表同一理由）。
+// 轨迹只回「有没有 + 点数」这种摘要，折线本体留给真正要画地图的那一次请求。
+func (d *Dashboard) workoutSeries(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("id")), 10, 64)
+	if err != nil || id <= 0 {
+		WriteError(w, http.StatusBadRequest, "id 缺失或非法")
+		return
+	}
+	s, err := d.db.WorkoutSeriesFor(r.Context(), id)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if s == nil {
+		WriteError(w, http.StatusNotFound, "运动记录不存在")
+		return
+	}
+	WriteJSON(w, http.StatusOK, s)
 }
 
 func (d *Dashboard) sources(w http.ResponseWriter, r *http.Request) {

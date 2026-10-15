@@ -166,6 +166,110 @@ type Workout struct {
 	TotalDistance Quantity       `json:"totalDistance"`
 	Distance      Quantity       `json:"distance"`
 	Meta          map[string]any `json:"-"`
+
+	// —— 运动详情字段。缺失是常态（不同机型与版本给的范围差别很大），
+	// 且全部走容错类型：任何一个换成别的形态都不许让整份导出解析失败。
+	ActiveEnergy  Quantity      `json:"activeEnergyBurned"`
+	BasalEnergy   Quantity      `json:"basalEnergy"`
+	AvgHeartRate  Quantity      `json:"avgHeartRate"`
+	MaxHeartRate  Quantity      `json:"maxHeartRate"`
+	EffortScore   Quantity      `json:"effortScore"`
+	Flights       Quantity      `json:"flightsClimbed"`
+	ElevationUp   Quantity      `json:"elevationUp"`
+	ElevationDown Quantity      `json:"elevationDown"`
+	Temperature   Quantity      `json:"temperature"`
+	Humidity      Quantity      `json:"humidity"`
+	AvgSpeed      Quantity      `json:"avgSpeed"`
+	MaxSpeed      Quantity      `json:"maxSpeed"`
+	Indoor        LaxBool       `json:"isIndoor"`
+	Place         Text          `json:"location"`
+	HeartRateData Series `json:"heartRateData"`
+	Recovery      Series `json:"heartRateRecovery"`
+	// Splits 原样留着：分段结构随上游版本变（公里与英里两套并存、字段名换过），
+	// 解析成列会把形态固化，而它只用于核对，不参与聚合。
+	Splits json.RawMessage `json:"splits"`
+}
+
+// LaxBool 兼容 true/false、0/1 与 "yes"/"no" 文本；认不出按未提供处理。
+//
+// 与 Float/Quantity 同一取舍：上游把某个字段换个形态时，代价必须是「少一个字段」，
+// 不能是「整份导出 400、一个指标都入不了库」。
+type LaxBool struct {
+	Value bool
+	Set   bool
+}
+
+// UnmarshalJSON 实现 json.Unmarshaler。
+func (b *LaxBool) UnmarshalJSON(p []byte) error {
+	switch strings.ToLower(strings.Trim(strings.TrimSpace(string(p)), `"`)) {
+	case "true", "1", "yes", "y":
+		b.Value, b.Set = true, true
+	case "false", "0", "no", "n":
+		b.Value, b.Set = false, true
+	}
+	return nil // 其余形态（null、对象、乱串）一律按未提供，不报错
+}
+
+// Text 取任意形态里的可读文本：字符串原样，裸数字转字符串，对象/数组按未提供。
+// 用于 location 这类「上游给的是人话标签」的字段。
+type Text string
+
+// UnmarshalJSON 实现 json.Unmarshaler。
+func (t *Text) UnmarshalJSON(p []byte) error {
+	trimmed := bytes.TrimSpace(p)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil
+	}
+	switch trimmed[0] {
+	case '"':
+		var v string
+		if err := json.Unmarshal(trimmed, &v); err == nil {
+			*t = Text(v)
+		}
+	case '[', '{', 't', 'f':
+		// 数组 / 对象 / 布尔：不是文本形态，忽略
+	default:
+		*t = Text(string(trimmed))
+	}
+	return nil
+}
+
+// SeriesPoint 是运动过程中的一点采样（逐点心率、恢复心率）。
+//
+// 只取时间与 Avg：实测上游把每点的 Min/Max 都写成与 Avg 相同的值，
+// 存三份一样的数既浪费，又会让人误以为那是三个不同的量。
+type SeriesPoint struct {
+	Date  string `json:"date"`
+	Avg   Float  `json:"Avg"`
+	Units string `json:"units"`
+}
+
+// Series 是逐点采样序列。
+//
+// 上游偶尔把整段写成对象或单个数字，数组里的元素也可能换成不认识的形态，
+// 所以逐点独立解码：认不出的点丢掉，其余照常入库。
+// 这里绝不能返回错误——一个数组的形状变化会让整份导出 400、一个指标都入不了库。
+type Series []SeriesPoint
+
+// UnmarshalJSON 实现 json.Unmarshaler。非数组形态按「没有这条序列」处理。
+func (s *Series) UnmarshalJSON(p []byte) error {
+	trimmed := bytes.TrimSpace(p)
+	if len(trimmed) == 0 || trimmed[0] != '[' {
+		return nil
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal(trimmed, &raw); err != nil {
+		return nil
+	}
+	out := make([]SeriesPoint, 0, len(raw))
+	for _, one := range raw {
+		var pt SeriesPoint
+		if err := json.Unmarshal(one, &pt); err == nil {
+			out = append(out, pt)
+		}
+	}
+	*s = out
+	return nil
 }
 
 // Quantity 是带单位的数量（如总能耗、总距离）。

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -713,6 +714,7 @@ func localMinute(t time.Time, tzOffsetMin int) int {
 
 // WorkoutRow 是运动记录。
 type WorkoutRow struct {
+	ID            int64    `json:"id"`
 	LocalDate     string   `json:"local_date"`
 	Name          string   `json:"name"`
 	Source        string   `json:"source"`
@@ -721,8 +723,13 @@ type WorkoutRow struct {
 	DurationMin   float64  `json:"duration_min"`
 	TotalEnergy   *float64 `json:"total_energy,omitempty"`
 	EnergyUnit    string   `json:"energy_unit,omitempty"`
+	ActiveEnergy  *float64 `json:"active_energy,omitempty"`
+	ActiveUnit    string   `json:"active_energy_unit,omitempty"`
 	TotalDistance *float64 `json:"total_distance,omitempty"`
 	DistanceUnit  string   `json:"distance_unit,omitempty"`
+	AvgHR         *float64 `json:"avg_hr,omitempty"`
+	MaxHR         *float64 `json:"max_hr,omitempty"`
+	EffortScore   *float64 `json:"effort_score,omitempty"`
 }
 
 // WorkoutRange 读取区间内的运动记录。
@@ -735,7 +742,9 @@ func (db *DB) WorkoutRange(ctx context.Context, from, to string) ([]WorkoutRow, 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.Pool.Query(ctx, `SELECT local_date, name, source, start_time, end_time, duration_min, total_energy, COALESCE(energy_unit,''), total_distance, COALESCE(distance_unit,'')
+	rows, err := db.Pool.Query(ctx, `SELECT id, local_date, name, source, start_time, end_time, duration_min,
+			total_energy, COALESCE(energy_unit,''), active_energy, COALESCE(active_energy_unit,''),
+			total_distance, COALESCE(distance_unit,''), avg_hr, max_hr, effort_score
 		FROM workouts WHERE local_date BETWEEN $1 AND $2 ORDER BY start_time DESC`, fd, td)
 	if err != nil {
 		return nil, err
@@ -746,7 +755,9 @@ func (db *DB) WorkoutRange(ctx context.Context, from, to string) ([]WorkoutRow, 
 		var r WorkoutRow
 		var ld pgtype.Date
 		var st, et time.Time
-		if err := rows.Scan(&ld, &r.Name, &r.Source, &st, &et, &r.DurationMin, &r.TotalEnergy, &r.EnergyUnit, &r.TotalDistance, &r.DistanceUnit); err != nil {
+		if err := rows.Scan(&r.ID, &ld, &r.Name, &r.Source, &st, &et, &r.DurationMin,
+			&r.TotalEnergy, &r.EnergyUnit, &r.ActiveEnergy, &r.ActiveUnit,
+			&r.TotalDistance, &r.DistanceUnit, &r.AvgHR, &r.MaxHR, &r.EffortScore); err != nil {
 			return nil, err
 		}
 		r.LocalDate = ld.Time.Format("2006-01-02")
@@ -755,6 +766,44 @@ func (db *DB) WorkoutRange(ctx context.Context, from, to string) ([]WorkoutRow, 
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// WorkoutSeries 是一条运动的逐点心率、恢复心率与分段原文。
+type WorkoutSeries struct {
+	WorkoutID   int64           `json:"workout_id"`
+	Start       string          `json:"start"`
+	HRSecs      []int32         `json:"hr_secs,omitempty"`
+	HRBPM       []float64       `json:"hr_bpm,omitempty"`
+	RecSecs     []int32         `json:"recovery_secs,omitempty"`
+	RecBPM      []float64       `json:"recovery_bpm,omitempty"`
+	Splits      json.RawMessage `json:"splits,omitempty"`
+	HasRoute    bool            `json:"has_route"`
+	RoutePoints int             `json:"route_points"`
+}
+
+// WorkoutSeriesFor 读取一条运动的曲线与轨迹摘要。
+// 轨迹只回「有没有 + 点数」：折线本体在 workout_routes 里，画地图时单独取，
+// 不该被一个「展开看心率」的动作连带拖出来。
+func (db *DB) WorkoutSeriesFor(ctx context.Context, id int64) (*WorkoutSeries, error) {
+	var s WorkoutSeries
+	var start time.Time
+	err := db.Pool.QueryRow(ctx, `
+		SELECT w.id, w.start_time, x.hr_secs, x.hr_bpm, x.rec_secs, x.rec_bpm, x.splits,
+			COALESCE(r.point_count, 0)
+		FROM workouts w
+		LEFT JOIN workout_series x ON x.workout_id = w.id
+		LEFT JOIN workout_routes r ON r.workout_id = w.id
+		WHERE w.id = $1`, id).
+		Scan(&s.WorkoutID, &start, &s.HRSecs, &s.HRBPM, &s.RecSecs, &s.RecBPM, &s.Splits, &s.RoutePoints)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.Start = start.UTC().Format(time.RFC3339)
+	s.HasRoute = s.RoutePoints > 0
+	return &s, nil
 }
 
 // SourceRow 是数据来源概览。

@@ -179,25 +179,94 @@ func (db *DB) WriteSamples(ctx context.Context, runID int64, samples []sample.Sa
 }
 
 // WriteWorkouts 写入运动记录（同名同来源同起始时间视为重复）。
+// WriteWorkouts 写入运动记录，返回新插入的条数。
+//
+// 幂等键是 (name, source, start_time)。与样本不同，这里冲突时**补齐字段而不是丢弃**：
+// 上游字段是分批出现的（老版本导出不带 effortScore 与逐点心率），
+// 冲突即丢弃会让后来才有的字段永远补不进去。数值用 COALESCE 保住已有值，
+// meta 按键合并，两边都不被空值冲掉。
+//
+// ingest_run_id 不跟着改：它记的是「哪一次投递把这条运动带进来的」，
+// 后续投递只补字段，不该把溯源指针挪到自己身上。
 func (db *DB) WriteWorkouts(ctx context.Context, runID int64, list []sample.Workout) (int, error) {
 	if len(list) == 0 {
 		return 0, nil
 	}
 	const q = `INSERT INTO workouts
-		(name, start_time, end_time, duration_min, total_energy, energy_unit, total_distance, distance_unit, source, local_date, tz_offset_min, ingest_run_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-		ON CONFLICT (name, source, start_time) DO NOTHING`
+		(name, start_time, end_time, duration_min, total_energy, energy_unit,
+		 active_energy, active_energy_unit, total_distance, distance_unit,
+		 avg_hr, max_hr, effort_score, source, local_date, tz_offset_min, meta, ingest_run_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+		ON CONFLICT (name, source, start_time) DO UPDATE SET
+			duration_min = EXCLUDED.duration_min,
+			total_energy = COALESCE(EXCLUDED.total_energy, workouts.total_energy),
+			energy_unit = COALESCE(EXCLUDED.energy_unit, workouts.energy_unit),
+			active_energy = COALESCE(EXCLUDED.active_energy, workouts.active_energy),
+			active_energy_unit = COALESCE(EXCLUDED.active_energy_unit, workouts.active_energy_unit),
+			total_distance = COALESCE(EXCLUDED.total_distance, workouts.total_distance),
+			distance_unit = COALESCE(EXCLUDED.distance_unit, workouts.distance_unit),
+			avg_hr = COALESCE(EXCLUDED.avg_hr, workouts.avg_hr),
+			max_hr = COALESCE(EXCLUDED.max_hr, workouts.max_hr),
+			effort_score = COALESCE(EXCLUDED.effort_score, workouts.effort_score),
+			meta = COALESCE(workouts.meta, '{}'::jsonb) || COALESCE(EXCLUDED.meta, '{}'::jsonb)
+		RETURNING id, (xmax = 0)`
 	n := 0
 	for _, w := range list {
-		tag, err := db.Pool.Exec(ctx, q, w.Name, w.StartTime.UTC(), w.EndTime.UTC(), w.DurationMin,
-			w.TotalEnergy, nullable(w.EnergyUnit), w.TotalDistance, nullable(w.DistanceUnit),
-			w.Source, w.LocalDate, w.TZOffsetMin, runID)
-		if err != nil {
+		var id int64
+		var isNew bool
+		if err := db.Pool.QueryRow(ctx, q, w.Name, w.StartTime.UTC(), w.EndTime.UTC(), w.DurationMin,
+			w.TotalEnergy, nullable(w.EnergyUnit), w.ActiveEnergy, nullable(w.ActiveUnit),
+			w.TotalDistance, nullable(w.DistanceUnit), w.AvgHR, w.MaxHR, w.EffortScore,
+			w.Source, w.LocalDate, w.TZOffsetMin, metaJSON(w.Meta), runID).Scan(&id, &isNew); err != nil {
 			return n, err
 		}
-		n += int(tag.RowsAffected())
+		if isNew {
+			n++
+		}
+		if err := db.writeWorkoutSeries(ctx, id, w); err != nil {
+			return n, err
+		}
 	}
 	return n, nil
+}
+
+// writeWorkoutSeries 落逐点心率与恢复心率。空序列不写行（宁可不写，也不留一行空数组
+// 让前端把「没有曲线」读成「曲线是平的」）。
+func (db *DB) writeWorkoutSeries(ctx context.Context, workoutID int64, w sample.Workout) error {
+	if len(w.HR) == 0 && len(w.Recovery) == 0 && len(w.Splits) == 0 {
+		return nil
+	}
+	const q = `INSERT INTO workout_series (workout_id, hr_secs, hr_bpm, rec_secs, rec_bpm, splits)
+		VALUES ($1,$2,$3,$4,$5,$6)
+		ON CONFLICT (workout_id) DO UPDATE SET
+			hr_secs = COALESCE(EXCLUDED.hr_secs, workout_series.hr_secs),
+			hr_bpm = COALESCE(EXCLUDED.hr_bpm, workout_series.hr_bpm),
+			rec_secs = COALESCE(EXCLUDED.rec_secs, workout_series.rec_secs),
+			rec_bpm = COALESCE(EXCLUDED.rec_bpm, workout_series.rec_bpm),
+			splits = COALESCE(EXCLUDED.splits, workout_series.splits),
+			ingested_at = now()`
+	secs, vals := splitPoints(w.HR)
+	rsecs, rvals := splitPoints(w.Recovery)
+	var splits any
+	if len(w.Splits) > 0 {
+		splits = w.Splits
+	}
+	_, err := db.Pool.Exec(ctx, q, workoutID, secs, vals, rsecs, rvals, splits)
+	return err
+}
+
+// splitPoints 把 [{at,value}] 拆成两条平行数组（库里存数组，读一次即得整条曲线）。
+// 空序列返回两个 nil，落库为 NULL 而不是空数组：区分「没采到」与「采到 0 个点」。
+func splitPoints(pts []sample.WorkoutPoint) ([]int32, []float64) {
+	if len(pts) == 0 {
+		return nil, nil
+	}
+	secs := make([]int32, len(pts))
+	vals := make([]float64, len(pts))
+	for i, p := range pts {
+		secs[i], vals[i] = p.AtSec, p.Value
+	}
+	return secs, vals
 }
 
 // WriteSleep 写入睡眠记录。

@@ -10,12 +10,25 @@
 	let error = $state('');
 
 	let totalMin = $derived(rows.reduce((s, r) => s + r.duration_min, 0));
-	let totalEnergy = $derived(rows.reduce((s, r) => s + (r.total_energy ?? 0), 0));
-	// 总消耗单位取自数据本身：入库时能量已统一到 kcal，这里不写死字面量，
+	/**
+	 * 「消耗」按主动能量口径：Apple 运动记录里显示的就是主动能量，
+	 * total_energy 含基础代谢，拿它求和会比健康 App 高出约三成（一年实测 +29.4%）。
+	 * 上游没给主动能量的记录回落用总能量，并在数字旁标「总」——
+	 * 两种口径混在同一个表格里却不作区分，是会让人做出错误比较的那种显示错误。
+	 */
+	const shownEnergy = (r: WorkoutRow) => r.active_energy ?? r.total_energy ?? null;
+	const isTotalCaliber = (r: WorkoutRow) => r.active_energy == null && r.total_energy != null;
+	let totalEnergy = $derived(rows.reduce((s, r) => s + (shownEnergy(r) ?? 0), 0));
+	let totalAllEnergy = $derived(rows.reduce((s, r) => s + (r.total_energy ?? 0), 0));
+		// 消耗单位取自数据本身：入库时能量已统一到 kcal，这里不写死字面量，
 	// 否则上游再换一次单位（kJ）就会把数值标成 kcal。
 	// 单位混用时求和本身没有意义，此时不标单位；无数据时回落到入库口径 kcal。
 	let energyUnit = $derived.by(() => {
-		const units = new Set(rows.map((r) => r.energy_unit).filter((u): u is string => Boolean(u)));
+		const units = new Set(
+			rows.map((r) => (r.active_energy != null ? r.active_energy_unit : r.energy_unit)).filter(
+				(u): u is string => Boolean(u)
+			)
+		);
 		if (units.size === 1) return [...units][0];
 		return units.size === 0 ? 'kcal' : '';
 	});
@@ -71,10 +84,15 @@
 			<div class="num mt-1 text-[20px] font-medium">{formatDuration(totalMin)}</div>
 		</div>
 		<div class="card px-4 py-3">
-			<div class="text-[12px] text-[var(--color-ink-500)]">总消耗</div>
+			<div class="text-[12px] text-[var(--color-ink-500)]">总消耗（主动）</div>
 			<div class="num mt-1 text-[20px] font-medium"
 				>{Math.round(totalEnergy)}{energyUnit ? ` ${energyUnit}` : ''}</div
 			>
+			{#if totalAllEnergy > totalEnergy}
+				<div class="mt-0.5 text-[11px] text-[var(--color-ink-500)]">
+					含基础代谢 {Math.round(totalAllEnergy)}{energyUnit ? ` ${energyUnit}` : ''}
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -99,28 +117,46 @@
 					<th class="px-4 py-2 text-left font-normal">开始</th>
 					<th class="px-4 py-2 text-left font-normal">项目</th>
 					<th class="px-4 py-2 text-right font-normal">时长 (min)</th>
-					<th class="px-4 py-2 text-right font-normal">消耗</th>
+					<th
+						class="px-4 py-2 text-right font-normal"
+						title="主动能量口径（不含基础代谢），与健康 App 一致">消耗 (kcal)</th>
 					<th class="px-4 py-2 text-right font-normal">距离</th>
+					<th class="px-4 py-2 text-right font-normal">平均心率</th>
+					<th class="px-4 py-2 text-right font-normal">最大心率</th>
 					<th class="px-4 py-2 text-left font-normal">来源</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each rows as r (r.start + r.name)}
+				{#each rows as r (r.id)}
 					<tr class="border-t border-[var(--color-line)]">
 						<td class="num px-4 py-2">{fmtTime(r.start)}</td>
 						<td class="px-4 py-2">{r.name}</td>
 						<td class="num px-4 py-2 text-right">{r.duration_min.toFixed(0)}</td>
 						<td class="num px-4 py-2 text-right">
-							{r.total_energy ? `${Math.round(r.total_energy)} ${r.energy_unit ?? ''}` : '—'}
+							{#if shownEnergy(r) != null}
+								{Math.round(shownEnergy(r) ?? 0)}
+								{#if isTotalCaliber(r)}
+									<!-- 老记录上游没给主动能量，只有含基础代谢的总消耗：
+									     标出来，否则两行数字看着同口径，人会拿它们互相比较。 -->
+									<span
+										class="text-[11px] text-[var(--color-ink-500)]"
+										title="该记录上游未提供主动能量，此处为含基础代谢的总消耗">总</span
+									>
+								{/if}
+							{:else}
+								—
+							{/if}
 						</td>
 						<td class="num px-4 py-2 text-right">
 							{r.total_distance ? `${r.total_distance.toFixed(2)} ${r.distance_unit ?? ''}` : '—'}
 						</td>
+						<td class="num px-4 py-2 text-right">{r.avg_hr ? Math.round(r.avg_hr) : '—'}</td>
+						<td class="num px-4 py-2 text-right">{r.max_hr ? Math.round(r.max_hr) : '—'}</td>
 						<td class="px-4 py-2">{r.source}</td>
 					</tr>
 				{:else}
 					<tr>
-						<td colspan="6" class="px-4 py-6 text-center text-[var(--color-ink-500)]">
+						<td colspan="8" class="px-4 py-6 text-center text-[var(--color-ink-500)]">
 							{loading ? '加载中…' : '暂无运动记录'}
 						</td>
 					</tr>

@@ -198,6 +198,7 @@ export type NightStages = {
 };
 
 export type WorkoutRow = {
+	id: number;
 	local_date: string;
 	name: string;
 	source: string;
@@ -206,8 +207,27 @@ export type WorkoutRow = {
 	duration_min: number;
 	total_energy?: number;
 	energy_unit?: string;
+	/** 主动能量（不含基础代谢）；Apple 运动记录里的「消耗」是这个口径 */
+	active_energy?: number;
+	active_energy_unit?: string;
 	total_distance?: number;
 	distance_unit?: string;
+	avg_hr?: number;
+	max_hr?: number;
+	effort_score?: number;
+};
+
+/** 一条运动的逐点曲线与轨迹摘要（/api/workouts/series） */
+export type WorkoutSeries = {
+	workout_id: number;
+	start: string;
+	hr_secs?: number[];
+	hr_bpm?: number[];
+	recovery_secs?: number[];
+	recovery_bpm?: number[];
+	splits?: unknown;
+	has_route: boolean;
+	route_points: number;
 };
 
 /** 一条目标（单位与中文名由后端从指标字典取） */
@@ -393,6 +413,17 @@ export const api = {
 	workouts: async (from: string, to: string) => {
 		const r = await get<{ rows: WorkoutRow[] }>(`/api/workouts?from=${from}&to=${to}`);
 		return { ...r, rows: arr(r.rows) };
+	},
+	/** 一条运动的逐点心率 / 恢复心率 / 分段 / 轨迹摘要（没有曲线时后端回空数组） */
+	workoutSeries: async (id: number) => {
+		const r = await get<WorkoutSeries>(`/api/workouts/series?id=${id}`);
+		return {
+			...r,
+			hr_secs: arr(r.hr_secs),
+			hr_bpm: arr(r.hr_bpm),
+			recovery_secs: arr(r.recovery_secs),
+			recovery_bpm: arr(r.recovery_bpm)
+		};
 	},
 	ecg: async (from: string, to: string) => {
 		const r = await get<{ from: string; to: string; records: EcgRecord[] }>(

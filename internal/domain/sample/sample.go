@@ -51,6 +51,15 @@ func (s *Sample) SetTime(start, end string, home *time.Location) bool {
 	return true
 }
 
+// WorkoutPoint 是运动过程中的一点采样：相对运动起点的秒数与取值。
+//
+// 存相对秒数而不是绝对时刻，与心电波形同一取舍：时轴只留一个事实来源
+// （绝对时刻 = 运动的 StartTime + AtSec）。
+type WorkoutPoint struct {
+	AtSec int32
+	Value float64
+}
+
 // Workout 是一条归一化运动记录。
 type Workout struct {
 	Name          string
@@ -60,11 +69,21 @@ type Workout struct {
 	DurationMin   float64
 	TotalEnergy   *float64
 	EnergyUnit    string
+	ActiveEnergy  *float64
+	ActiveUnit    string
 	TotalDistance *float64
 	DistanceUnit  string
-	LocalDate     string
-	TZOffsetMin   int
-	Meta          map[string]any
+	AvgHR         *float64
+	MaxHR         *float64
+	EffortScore   *float64
+	// HR / Recovery 是按时间升序的逐点心率与运动后恢复心率；可能为空。
+	HR       []WorkoutPoint
+	Recovery []WorkoutPoint
+	// Splits 是上游分段原文（公里/英里两套并存、字段名换过），只用于核对。
+	Splits      []byte
+	LocalDate   string
+	TZOffsetMin int
+	Meta        map[string]any
 }
 
 // SleepSession 是一段归一化睡眠。
