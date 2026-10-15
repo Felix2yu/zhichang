@@ -31,6 +31,37 @@ https://<你的域名>/api/ingest/hae
 
 建议起步集：步数、活动能量、基础能量、静息心率、心率、心率变异性、血氧、睡眠分析、体重、步行+跑步距离、爬楼层数。
 
+### 采集面自查：字典有、上游没发
+
+指标字典是全集，不代表你的自动化在发。一年真实导出对照字典的结果：**上游出现 40 类，字典登记 51 条**，差额里有一批是「字典里有卡片、但自动化从没发过」——它们在趋势页就是一个永远空的 chip，看着像应用没记录，实际是采集端没开。
+
+| 指标 | 要它有数据需要什么 |
+|---|---|
+| 血糖 `blood_glucose` | HAE 勾选血糖；通常需要 CGM/血糖仪写入健康 App |
+| 体温 `body_temperature`、睡眠腕温 | 腕温由 watchOS 自动记录；体温需 HAE 勾选对应类型 |
+| 体重 `body_mass`、体脂率、BMI、去脂体重、身高 | 体脂秤或手动记录；只勾体重的话其余四项会一直空 |
+| 用力肺活量、最大呼气流速 | 需肺活量计类 App 写入健康 App |
+| 洗手次数、心理状态 | HAE 勾选「类别」型数据（这两项是分类记录，不是数值） |
+| 跑步速度、跑步功率、性生活次数 | 已在字典里；跑步两项只在含该数据的运动后出现，量极少属正常 |
+
+自查命令（不依赖界面）：
+
+```bash
+zhichangd doctor                       # 总览样本数与最近同步
+psql "$ZHICHANG_DB_DSN" -c "
+  SELECT m.metric, m.display_name_zh,
+         (SELECT count(*) FROM samples s WHERE s.metric = m.metric)          AS 样本,
+         (SELECT count(*) FROM daily_metrics_day d WHERE d.metric = m.metric) AS 天级
+    FROM metric_defs m
+   WHERE (SELECT count(*) FROM samples s WHERE s.metric = m.metric) = 0
+     AND (SELECT count(*) FROM daily_metrics_day d WHERE d.metric = m.metric) = 0
+   ORDER BY 1;"
+```
+
+两列都要看：`sleep_analysis` 天生没有样本（会话只进 `sleep_sessions`），只看样本列会把它误报成空指标。
+
+查出来是空的指标有两种可能：HAE 没勾，或你根本没有这个数据源。前者去自动化里补勾，后者放着就行——**别为了让卡片不空而造数据**。
+
 ## 3. 导出设置
 
 | 项 | 推荐值 | 原因 |
