@@ -848,6 +848,9 @@ type SyncStatus struct {
 }
 
 // RunBrief 是一次摄入的简要信息。
+//
+// 事件类的条数要单独报：运动、睡眠、心电都不产生样本，只报 sample_count
+// 会让一次纯心电同步显示成「收到 0 条，入库 0」，看着像同步坏了。
 type RunBrief struct {
 	ID           int64   `json:"id"`
 	Transport    string  `json:"transport"`
@@ -857,6 +860,9 @@ type RunBrief struct {
 	SampleCount  int     `json:"sample_count"`
 	Inserted     int     `json:"inserted"`
 	Duplicates   int     `json:"duplicates"`
+	Workouts     int     `json:"workouts"`
+	Sleep        int     `json:"sleep"`
+	ECG          int     `json:"ecg"`
 	Status       string  `json:"status"`
 	Error        *string `json:"error,omitempty"`
 }
@@ -884,7 +890,7 @@ func (db *DB) SyncStatusOf(ctx context.Context, days int) (SyncStatus, error) {
 		MissingDays: make([]string, 0, capacity),
 	}
 	rows, err := db.Pool.Query(ctx, `SELECT id, transport, COALESCE(automation_id,''), COALESCE(session_id,''), received_at,
-		sample_count, inserted, duplicates, status, error
+		sample_count, inserted, duplicates, workout_count, sleep_count, ecg_count, status, error
 		FROM ingest_runs ORDER BY received_at DESC LIMIT 10`)
 	if err != nil {
 		return st, err
@@ -893,7 +899,8 @@ func (db *DB) SyncStatusOf(ctx context.Context, days int) (SyncStatus, error) {
 	for rows.Next() {
 		var r RunBrief
 		var at time.Time
-		if err := rows.Scan(&r.ID, &r.Transport, &r.AutomationID, &r.SessionID, &at, &r.SampleCount, &r.Inserted, &r.Duplicates, &r.Status, &r.Error); err != nil {
+		if err := rows.Scan(&r.ID, &r.Transport, &r.AutomationID, &r.SessionID, &at, &r.SampleCount, &r.Inserted,
+			&r.Duplicates, &r.Workouts, &r.Sleep, &r.ECG, &r.Status, &r.Error); err != nil {
 			return st, err
 		}
 		r.ReceivedAt = at.UTC().Format(time.RFC3339)

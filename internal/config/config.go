@@ -47,6 +47,7 @@ type MQTT struct {
 // MCP 控制内置 MCP 服务器。
 type MCP struct {
 	Enabled bool   `env:"ENABLED"`
+	Redact  bool   `env:"REDACT"`
 	Token   string `env:"TOKEN"`
 	Path    string `env:"PATH"`
 }
@@ -133,6 +134,7 @@ func Load() (Config, error) {
 	c.MQTT.Password = get("MQTT_PASSWORD")
 
 	c.MCP.Enabled = boolEnv("MCP_ENABLED", true)
+	c.MCP.Redact = boolEnv("MCP_REDACT", false)
 	c.MCP.Token = get("MCP_TOKEN")
 	if v := get("MCP_PATH"); v != "" {
 		c.MCP.Path = v

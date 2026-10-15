@@ -90,6 +90,8 @@ export const METRIC_GROUPS: MetricGroup[] = [
 		tint: '#6d7a3f',
 		metrics: [
 			'walking_speed',
+			'running_speed',
+			'running_power',
 			'walking_step_length',
 			'stair_speed_up',
 			'stair_speed_down',
@@ -150,9 +152,9 @@ export const METRIC_GROUPS: MetricGroup[] = [
 	{
 		id: 'other',
 		label: '其他',
-		desc: '洗手、刷牙与心理状态',
+		desc: '洗手、刷牙、心理状态与私密事件',
 		tint: '#7b7f87',
-		metrics: ['handwashing', 'toothbrushing', 'state_of_mind']
+		metrics: ['handwashing', 'toothbrushing', 'state_of_mind', 'sexual_activity']
 	}
 ];
 
@@ -188,6 +190,8 @@ const UNIT_DIGITS: Record<string, number> = {
 	'mg': 0,
 	m: 0,
 	'm/s': 2,
+	W: 0,
+	s: 0,
 	'dBASPL': 0,
 	'kcal/hr·kg': 2
 };

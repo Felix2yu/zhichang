@@ -18,7 +18,7 @@ func New(deps *Deps) *mcp.Server {
 		Name:        "health_list_metrics",
 		Description: "列出全部可用健康指标：中文名、单位、聚合口径（日内 sum/mean、跨来源 max/加权 mean）",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.ListMetrics(ctx))
+		return deps.result(deps.ListMetrics(ctx))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -27,7 +27,7 @@ func New(deps *Deps) *mcp.Server {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 		Date string `json:"date,omitempty" jsonschema:"日期，格式 YYYY-MM-DD，默认今天"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.DailySummary(ctx, in.Date))
+		return deps.result(deps.DailySummary(ctx, in.Date))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -38,7 +38,7 @@ func New(deps *Deps) *mcp.Server {
 		From    string `json:"from,omitempty" jsonschema:"起始日期 YYYY-MM-DD，默认 30 天前"`
 		To      string `json:"to,omitempty" jsonschema:"结束日期 YYYY-MM-DD，默认今天"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.Query(ctx, in.Metrics, in.From, in.To))
+		return deps.result(deps.Query(ctx, in.Metrics, in.From, in.To))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -51,7 +51,7 @@ func New(deps *Deps) *mcp.Server {
 		BFrom   string `json:"b_from,omitempty" jsonschema:"区间 B 起始日期，默认 14 天前"`
 		BTo     string `json:"b_to,omitempty" jsonschema:"区间 B 结束日期，默认 8 天前"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.Compare(ctx, in.Metrics, in.AFrom, in.ATo, in.BFrom, in.BTo))
+		return deps.result(deps.Compare(ctx, in.Metrics, in.AFrom, in.ATo, in.BFrom, in.BTo))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -60,7 +60,7 @@ func New(deps *Deps) *mcp.Server {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 		Metrics string `json:"metrics,omitempty" jsonschema:"逗号分隔的指标名"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.Latest(ctx, in.Metrics))
+		return deps.result(deps.Latest(ctx, in.Metrics))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -70,7 +70,7 @@ func New(deps *Deps) *mcp.Server {
 		From string `json:"from,omitempty" jsonschema:"起始日期 YYYY-MM-DD，默认 30 天前"`
 		To   string `json:"to,omitempty" jsonschema:"结束日期 YYYY-MM-DD，默认今天"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.Sleep(ctx, in.From, in.To))
+		return deps.result(deps.Sleep(ctx, in.From, in.To))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -80,7 +80,7 @@ func New(deps *Deps) *mcp.Server {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 		Date string `json:"date,omitempty" jsonschema:"睡眠日 YYYY-MM-DD（以入睡时刻归属），默认今天"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.SleepDetail(ctx, in.Date))
+		return deps.result(deps.SleepDetail(ctx, in.Date))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -90,7 +90,7 @@ func New(deps *Deps) *mcp.Server {
 		From string `json:"from,omitempty" jsonschema:"起始日期 YYYY-MM-DD，默认 30 天前"`
 		To   string `json:"to,omitempty" jsonschema:"结束日期 YYYY-MM-DD，默认今天"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.Workouts(ctx, in.From, in.To))
+		return deps.result(deps.Workouts(ctx, in.From, in.To))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -101,7 +101,7 @@ func New(deps *Deps) *mcp.Server {
 		From string `json:"from,omitempty" jsonschema:"起始日期 YYYY-MM-DD，默认 90 天前"`
 		To   string `json:"to,omitempty" jsonschema:"结束日期 YYYY-MM-DD，默认今天"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.ECG(ctx, in.From, in.To))
+		return deps.result(deps.ECG(ctx, in.From, in.To))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -110,7 +110,7 @@ func New(deps *Deps) *mcp.Server {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 		Days int `json:"days,omitempty" jsonschema:"检查最近多少天，默认 30"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.Coverage(ctx, in.Days))
+		return deps.result(deps.Coverage(ctx, in.Days))
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -122,23 +122,41 @@ func New(deps *Deps) *mcp.Server {
 		From string `json:"from,omitempty" jsonschema:"起始日期 YYYY-MM-DD，默认 90 天前"`
 		To   string `json:"to,omitempty" jsonschema:"结束日期 YYYY-MM-DD，默认今天"`
 	}) (*mcp.CallToolResult, Result, error) {
-		return textResult(deps.Correlation(ctx, in.A, in.B, in.From, in.To))
+		return deps.result(deps.Correlation(ctx, in.A, in.B, in.From, in.To))
 	})
 
 	return s
 }
 
 // DepsFrom 便捷构造依赖。
-func DepsFrom(db *postgres.DB, reg *metric.Registry, loc *time.Location, tzName string) *Deps {
-	return &Deps{DB: db, Metrics: reg, Location: loc, Timezone: tzName}
+func DepsFrom(db *postgres.DB, reg *metric.Registry, loc *time.Location, tzName string, redact bool) *Deps {
+	return &Deps{DB: db, Metrics: reg, Location: loc, Timezone: tzName, Redact: redact}
 }
 
-func textResult(s string, err error) (*mcp.CallToolResult, Result, error) {
+// result 组装工具输出，并在这里（而不是每个取值点）套上脱敏档。
+//
+// 11 个工具、二十多处格式化，逐点判断漏掉任何一处都是一次静默泄露；
+// 挂在唯一的出口上，以后新加工具天然被覆盖，不必再提醒作者「记得脱敏」。
+//
+// 脱敏刻意做得比「只挡测量值」更多：数值与计数一起挡，留下指标名、单位、日期与钟点。
+// AI 客户端因此仍能回答「有哪些指标、哪几天有数据、口径是什么」，但拿不到任何大小。
+// 方向是单边选择的：漏一个取值点是泄露，多挡一个计数只是少一句话。
+func (d *Deps) result(s string, err error) (*mcp.CallToolResult, Result, error) {
 	if err != nil {
+		// 错误文本也要过一遍：数据库报错常把出问题的值原样带出来，
+		// 「失败时不脱敏」等于在最不该漏的地方开洞。
+		msg := err.Error()
+		if d.Redact {
+			msg = maskNumbers(msg)
+		}
+		// 结构化输出给裸错误、内容给带前缀的一句：客户端二选一读取时看到的是同一份事实。
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "查询失败: " + err.Error()}},
+			Content: []mcp.Content{&mcp.TextContent{Text: "查询失败: " + msg}},
 			IsError: true,
-		}, Result{Text: err.Error()}, nil
+		}, Result{Text: msg}, nil
+	}
+	if d.Redact {
+		s = maskNumbers(s)
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s}}}, Result{Text: s}, nil
 }

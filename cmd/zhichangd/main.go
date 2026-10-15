@@ -156,7 +156,7 @@ func serve() error {
 	})
 
 	if cfg.MCP.Enabled {
-		mcpServer := mcpsrv.New(mcpsrv.DepsFrom(db, registry, home, cfg.HomeTZ))
+		mcpServer := mcpsrv.New(mcpsrv.DepsFrom(db, registry, home, cfg.HomeTZ, cfg.MCP.Redact))
 		handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil)
 		r.Handle(cfg.MCP.Path, requireToken(cfg.MCP.Token, handler))
 		slog.Info("MCP 已启用", "path", cfg.MCP.Path)

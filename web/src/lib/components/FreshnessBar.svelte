@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { SyncStatus } from '#lib/api';
+	import { describeRun, type SyncStatus } from '#lib/api';
 	import { dataColor } from '#lib/theme.svelte';
 
 	// 数据新鲜度条：概览页第一屏第一行。
@@ -55,7 +55,7 @@
 			{:else if status?.last_run}
 				最后同步 {ago(status.last_run.received_at)}
 				<span class="num text-[var(--color-ink-500)]">
-					· 收到 {status.last_run.sample_count} 条，入库 {status.last_run.inserted}
+					· {describeRun(status.last_run)}
 				</span>
 			{:else}
 				尚无同步记录

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -151,6 +152,55 @@ type Point struct {
 	SleepEnd   string     `json:"sleepEnd"`
 	InBedStart string     `json:"inBedStart"`
 	InBedEnd   string     `json:"inBedEnd"`
+
+	// Subtypes 收集「不认识的数字键」。类别型指标按子类型分键导出时没有 qty，
+	// 事件数写在诸如 "Unspecified":1 这样的键里（实测性生活的日汇总就是这样），
+	// 只按已知字段取值会把整条记录判成无值并静默丢弃。
+	Subtypes map[string]float64 `json:"-"`
+}
+
+// pointKnownKeys 是 Point 自己认识的 JSON 键，由结构体标签反射得出。
+// 手写这份清单迟早会和字段漂移，而漂移的后果是某个已知字段被同时
+// 当成子类型再算一遍——数值翻倍且不报错。
+var pointKnownKeys = func() map[string]bool {
+	m := map[string]bool{"subtypes": true}
+	for i := 0; i < reflect.TypeOf(Point{}).NumField(); i++ {
+		tag := reflect.TypeOf(Point{}).Field(i).Tag.Get("json")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		m[strings.Split(tag, ",")[0]] = true
+	}
+	return m
+}()
+
+// UnmarshalJSON 在常规解析之外，把未知的数字键收进 Subtypes。
+// 收不进来的形态（未知键是字符串/对象）一律忽略，绝不因此报错。
+func (p *Point) UnmarshalJSON(b []byte) error {
+	type alias Point // 断开递归
+	var a alias
+	if err := json.Unmarshal(b, &a); err != nil {
+		return err
+	}
+	*p = Point(a)
+
+	var all map[string]json.RawMessage
+	if err := json.Unmarshal(b, &all); err != nil {
+		return nil // 不是对象：没有子类型可收
+	}
+	for k, raw := range all {
+		if pointKnownKeys[k] {
+			continue
+		}
+		var f float64
+		if err := json.Unmarshal(raw, &f); err == nil {
+			if p.Subtypes == nil {
+				p.Subtypes = map[string]float64{}
+			}
+			p.Subtypes[k] = f
+		}
+	}
+	return nil
 }
 
 // Workout 是一条运动记录（v2 结构）。
@@ -169,22 +219,22 @@ type Workout struct {
 
 	// —— 运动详情字段。缺失是常态（不同机型与版本给的范围差别很大），
 	// 且全部走容错类型：任何一个换成别的形态都不许让整份导出解析失败。
-	ActiveEnergy  Quantity      `json:"activeEnergyBurned"`
-	BasalEnergy   Quantity      `json:"basalEnergy"`
-	AvgHeartRate  Quantity      `json:"avgHeartRate"`
-	MaxHeartRate  Quantity      `json:"maxHeartRate"`
-	EffortScore   Quantity      `json:"effortScore"`
-	Flights       Quantity      `json:"flightsClimbed"`
-	ElevationUp   Quantity      `json:"elevationUp"`
-	ElevationDown Quantity      `json:"elevationDown"`
-	Temperature   Quantity      `json:"temperature"`
-	Humidity      Quantity      `json:"humidity"`
-	AvgSpeed      Quantity      `json:"avgSpeed"`
-	MaxSpeed      Quantity      `json:"maxSpeed"`
-	Indoor        LaxBool       `json:"isIndoor"`
-	Place         Text          `json:"location"`
-	HeartRateData Series `json:"heartRateData"`
-	Recovery      Series `json:"heartRateRecovery"`
+	ActiveEnergy  Quantity `json:"activeEnergyBurned"`
+	BasalEnergy   Quantity `json:"basalEnergy"`
+	AvgHeartRate  Quantity `json:"avgHeartRate"`
+	MaxHeartRate  Quantity `json:"maxHeartRate"`
+	EffortScore   Quantity `json:"effortScore"`
+	Flights       Quantity `json:"flightsClimbed"`
+	ElevationUp   Quantity `json:"elevationUp"`
+	ElevationDown Quantity `json:"elevationDown"`
+	Temperature   Quantity `json:"temperature"`
+	Humidity      Quantity `json:"humidity"`
+	AvgSpeed      Quantity `json:"avgSpeed"`
+	MaxSpeed      Quantity `json:"maxSpeed"`
+	Indoor        LaxBool  `json:"isIndoor"`
+	Place         Text     `json:"location"`
+	HeartRateData Series   `json:"heartRateData"`
+	Recovery      Series   `json:"heartRateRecovery"`
 	// Splits 原样留着：分段结构随上游版本变（公里与英里两套并存、字段名换过），
 	// 解析成列会把形态固化，而它只用于核对，不参与聚合。
 	Splits json.RawMessage `json:"splits"`

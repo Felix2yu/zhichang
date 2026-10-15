@@ -114,7 +114,7 @@ func MCP(args []string) error {
 		if err != nil {
 			loc = time.UTC
 		}
-		server := mcpsrv.New(mcpsrv.DepsFrom(db, registry, loc, cfg.HomeTZ))
+		server := mcpsrv.New(mcpsrv.DepsFrom(db, registry, loc, cfg.HomeTZ, cfg.MCP.Redact))
 		if err := server.Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
 			return err
 		}

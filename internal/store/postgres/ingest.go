@@ -85,9 +85,10 @@ func (db *DB) FinishRun(ctx context.Context, runID int64, stats IngestStats, run
 	}
 	_, err := db.Pool.Exec(ctx, `UPDATE ingest_runs SET
 		sample_count=$2, inserted=$3, duplicates=$4, updated=$5, status=$6, error=NULLIF($7,''),
-		affected_from=NULLIF($8,'')::date, affected_to=NULLIF($9,'')::date
+		affected_from=NULLIF($8,'')::date, affected_to=NULLIF($9,'')::date,
+		workout_count=$10, sleep_count=$11, ecg_count=$12
 		WHERE id=$1`, runID, stats.Received, stats.Inserted, stats.Duplicates, stats.Updated,
-		status, msg, stats.AffectedFrom, stats.AffectedTo)
+		status, msg, stats.AffectedFrom, stats.AffectedTo, stats.Workouts, stats.Sleep, stats.ECG)
 	return err
 }
 
@@ -95,9 +96,11 @@ func (db *DB) FinishRun(ctx context.Context, runID int64, stats IngestStats, run
 func (db *DB) LoadRunStats(ctx context.Context, runID int64) (IngestStats, error) {
 	var st IngestStats
 	var from, to pgtype.Date
-	err := db.Pool.QueryRow(ctx, `SELECT id, sample_count, inserted, duplicates, updated, affected_from, affected_to
+	err := db.Pool.QueryRow(ctx, `SELECT id, sample_count, inserted, duplicates, updated,
+			workout_count, sleep_count, ecg_count, affected_from, affected_to
 		FROM ingest_runs WHERE id = $1`, runID).Scan(
-		&st.RunID, &st.Received, &st.Inserted, &st.Duplicates, &st.Updated, &from, &to)
+		&st.RunID, &st.Received, &st.Inserted, &st.Duplicates, &st.Updated,
+		&st.Workouts, &st.Sleep, &st.ECG, &from, &to)
 	if err != nil {
 		return st, err
 	}

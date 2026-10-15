@@ -55,8 +55,15 @@ func Normalize(p *Payload, reg *metric.Registry, home *time.Location) Result {
 		for _, pt := range m.Data {
 			v, ok := pickValue(def.ValueField, pt)
 			if !ok {
-				res.Skipped++
-				continue
+				// 取值字段没有，但可能带着一堆子类型键：类别型指标按子类型分键导出时
+				// 根本没有 qty（实测性生活的日汇总是 {"Unspecified":1}），
+				// 只按已知字段取值会把整条判成无值、静默丢掉。
+				s, has := subtypeSum(pt)
+				if !has {
+					res.Skipped++
+					continue
+				}
+				v = s
 			}
 			// 单位归一到字典口径（kJ → kcal 等）：值与其单位必须一起改。
 			// 只改值不改单位会让展示层按字典单位渲染，把一个 kJ 数值标成 kcal。
@@ -472,6 +479,22 @@ func pickValue(field string, pt Point) (float64, bool) {
 	}
 }
 
+// subtypeSum 把未知的数字子类型键求和，作为该点的值。
+//
+// 求和而不是取第一个非零键：一次日汇总可能同时给多个子类型记数
+// （{"Protection Used":0,"Unspecified":1}），而「这天发生了几次」的口径只能是总数。
+// 全 0 也是有效观测（那天没发生），不当成缺失。
+func subtypeSum(pt Point) (float64, bool) {
+	if len(pt.Subtypes) == 0 {
+		return 0, false
+	}
+	var sum float64
+	for _, n := range pt.Subtypes {
+		sum += n
+	}
+	return sum, true
+}
+
 func buildMeta(pt Point) map[string]any {
 	meta := map[string]any{}
 	if pt.MealTime != "" {
@@ -482,6 +505,10 @@ func buildMeta(pt Point) map[string]any {
 	}
 	if pt.Value != "" {
 		meta["value"] = pt.Value
+	}
+	// 子类型明细留着：合并成总数之后，「这 3 次分别是什么」只剩这一份记录能回答
+	if len(pt.Subtypes) > 0 {
+		meta["subtypes"] = pt.Subtypes
 	}
 	if len(meta) == 0 {
 		return nil

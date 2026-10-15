@@ -301,9 +301,34 @@ export type SyncRun = {
 	sample_count: number;
 	inserted: number;
 	duplicates: number;
+	workouts: number;
+	sleep: number;
+	ecg: number;
 	status: string;
 	error?: string;
 };
+
+/** 一次投递落下的事件条数（运动 / 睡眠 / 心电）；全为 0 时返回空串。 */
+export function eventCounts(r: SyncRun): string {
+	const parts: string[] = [];
+	if (r.workouts) parts.push(`运动 ${r.workouts}`);
+	if (r.sleep) parts.push(`睡眠 ${r.sleep}`);
+	if (r.ecg) parts.push(`心电 ${r.ecg}`);
+	return parts.join(' · ');
+}
+
+/**
+ * 一次投递的条数摘要。
+ *
+ * 运动、睡眠、心电都不产生样本（各自落自己的事件表），只报 sample_count
+ * 会让一次纯心电同步显示成「收到 0 条，入库 0」——看着像同步坏了，
+ * 实际是几十条心电刚进来。
+ */
+export function describeRun(r: SyncRun): string {
+	const base = `收到 ${r.sample_count} 条，入库 ${r.inserted}`;
+	const events = eventCounts(r);
+	return events ? `${base} · ${events}` : base;
+}
 
 export type SyncStatus = {
 	last_run: SyncRun | null;

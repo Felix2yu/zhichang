@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type SourceRow, type SyncStatus } from '#lib/api';
+	import { api, describeRun, eventCounts, type SourceRow, type SyncStatus } from '#lib/api';
 
 	let status = $state<SyncStatus | null>(null);
 	let sources = $state<SourceRow[]>([]);
@@ -42,9 +42,10 @@
 					<dd class="num">{fmt(status.last_run.received_at)}</dd>
 					<dt class="text-[var(--color-ink-500)]">来源</dt>
 					<dd>{status.last_run.transport}{status.last_run.automation_id ? ` · ${status.last_run.automation_id}` : ''}</dd>
-					<dt class="text-[var(--color-ink-500)]">样本</dt>
+					<dt class="text-[var(--color-ink-500)]">条数</dt>
 					<dd class="num">
-						收到 {status.last_run.sample_count} · 入库 {status.last_run.inserted} · 重复 {status.last_run.duplicates}
+						{describeRun(status.last_run)}
+						{#if status.last_run.duplicates}· 重复 {status.last_run.duplicates}{/if}
 					</dd>
 					<dt class="text-[var(--color-ink-500)]">状态</dt>
 					<dd>{status.last_run.status}</dd>
@@ -111,6 +112,7 @@
 					<th class="px-4 py-2 text-right font-normal">收到</th>
 					<th class="px-4 py-2 text-right font-normal">入库</th>
 					<th class="px-4 py-2 text-right font-normal">重复</th>
+					<th class="px-4 py-2 text-right font-normal">事件</th>
 					<th class="px-4 py-2 text-left font-normal">状态</th>
 				</tr>
 			</thead>
@@ -123,11 +125,12 @@
 						<td class="num px-4 py-2 text-right">{r.sample_count}</td>
 						<td class="num px-4 py-2 text-right">{r.inserted}</td>
 						<td class="num px-4 py-2 text-right">{r.duplicates}</td>
+						<td class="num px-4 py-2 text-right">{eventCounts(r) || '—'}</td>
 						<td class="px-4 py-2">{r.status}</td>
 					</tr>
 				{:else}
 					<tr>
-						<td colspan="7" class="px-4 py-6 text-center text-[var(--color-ink-500)]">暂无记录</td>
+						<td colspan="8" class="px-4 py-6 text-center text-[var(--color-ink-500)]">暂无记录</td>
 					</tr>
 				{/each}
 			</tbody>

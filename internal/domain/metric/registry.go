@@ -167,7 +167,9 @@ func Defaults() []Def {
 		def("blood_pressure_diastolic", "舒张压", KindInstant, DayAggMean, CrossAggMean, "mmHg", "diastolic", "line", 250),
 		def("vo2_max", "最大摄氧量", KindInstant, DayAggLast, CrossAggMean, "mL/min·kg", "qty", "line", 260),
 		def("physical_effort", "体力消耗", KindInstant, DayAggMean, CrossAggMean, "kcal/hr·kg", "qty", "line", 265),
+		def("running_power", "跑步功率", KindInstant, DayAggMean, CrossAggMean, "W", "qty", "line", 266),
 		def("walking_speed", "步行速度", KindInstant, DayAggMean, CrossAggMean, "km/hr", "qty", "line", 270),
+		def("running_speed", "跑步速度", KindInstant, DayAggMean, CrossAggMean, "km/hr", "qty", "line", 271),
 		def("walking_step_length", "步幅", KindInstant, DayAggMean, CrossAggMean, "cm", "qty", "line", 280),
 		def("walking_asymmetry_percentage", "步行不对称性", KindInstant, DayAggMean, CrossAggMean, "%", "qty", "line", 281),
 		def("walking_double_support_percentage", "双脚支撑时间占比", KindInstant, DayAggMean, CrossAggMean, "%", "qty", "line", 282),
@@ -181,7 +183,15 @@ func Defaults() []Def {
 
 		// 类别/事件量：日内计数
 		def("handwashing", "洗手次数", KindCategorical, DayAggCount, CrossAggMax, "count", "qty", "bar", 400),
-		def("toothbrushing", "刷牙次数", KindCategorical, DayAggCount, CrossAggMax, "count", "qty", "bar", 410),
+		// 刷牙上游给的是时长（实测 36~230，单位 s），不是次数：
+		// 按「次数 + 日内计数」登记会让界面永远显示「1 次」而把时长丢掉，
+		// 且库里的单位（s）与字典的单位（count）不一致，界面上看不出矛盾。
+		def("toothbrushing", "刷牙时长", KindCumulative, DayAggSum, CrossAggMax, "s", "qty", "bar", 410),
 		def("state_of_mind", "心理状态", KindCategorical, DayAggCount, CrossAggMax, "count", "qty", "bar", 420),
+		// 敏感指标：数据照常入库与聚合（不该被静默丢弃），但默认不出现在
+		// 指标列表与 MCP 清单里——要不要摆上仪表盘由用户自己决定。
+		// 敏感指标：数据不该被静默丢弃（此前它整条取不到值），界面入口与其余指标同等对待。
+		// 不想让它的数值出现在任何对外通道里，用 MCP 的脱敏档（ZHICHANG_MCP_REDACT）。
+		def("sexual_activity", "性生活次数", KindCumulative, DayAggSum, CrossAggMax, "count", "qty", "bar", 430),
 	}
 }

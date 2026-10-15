@@ -20,6 +20,11 @@ type Deps struct {
 	Metrics  *metric.Registry
 	Location *time.Location
 	Timezone string
+
+	// Redact 打开后，全部工具的返回值里的数值都换成占位符（日期与钟点保留）。
+	// 用于把 MCP 接到云端 AI 客户端时：指标目录、口径、哪天有数据照常可问，
+	// 但任何测量大小都出不了本机。由 ZHICHANG_MCP_REDACT=true 开启，默认关。
+	Redact bool
 }
 
 // Result 是工具的文本输出。
