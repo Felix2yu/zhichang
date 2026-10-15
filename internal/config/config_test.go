@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -337,4 +338,40 @@ func TestLoadForCLI(t *testing.T) {
 			t.Fatalf("完整配置应原样返回: %+v", c)
 		}
 	})
+}
+
+// TestLoadForCLIPreservesEveryField 锁住「CLI 路径的配置文件是完整的」。
+//
+// 这里曾经手抄一份字段白名单重建 Config：新加的 MCP.Redact 不在名单里，
+// 于是 `zhichangd mcp` 永远读到默认值——脱敏档只在 serve 生效，
+// 而 stdio 恰是本地 AI 客户端最常用的通道。用反射逐字段比对，
+// 以后加配置项不需要记得改这里。
+func TestLoadForCLIPreservesEveryField(t *testing.T) {
+	t.Setenv("ZHICHANG_DB_DSN", "postgres://x/y")
+	t.Setenv("ZHICHANG_MCP_REDACT", "true")
+	t.Setenv("ZHICHANG_MQTT_ENABLED", "true")
+	t.Setenv("ZHICHANG_RAW_ARCHIVE_DIR", "/tmp/archive")
+	t.Setenv("ZHICHANG_LOG_LEVEL", "debug")
+	t.Setenv("ZHICHANG_INGEST_TOKEN", "")
+
+	cli, err := LoadForCLI()
+	if err != nil {
+		t.Fatalf("缺接入令牌时 CLI 不该报错: %v", err)
+	}
+	if !cli.MCP.Redact {
+		t.Fatal("CLI 路径丢了 MCP.Redact（白名单式重建的典型后果）")
+	}
+	// 与 Load 的结果逐字段比对，只允许 IngestToken 不同
+	srv, _ := Load()
+	cv, sv := reflect.ValueOf(cli), reflect.ValueOf(srv)
+	for i := 0; i < cv.NumField(); i++ {
+		name := cv.Type().Field(i).Name
+		if name == "IngestToken" {
+			continue
+		}
+		if !reflect.DeepEqual(cv.Field(i).Interface(), sv.Field(i).Interface()) {
+			t.Fatalf("字段 %s 在 CLI 与 serve 两条路径上不一致: %v vs %v",
+				name, cv.Field(i).Interface(), sv.Field(i).Interface())
+		}
+	}
 }

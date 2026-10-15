@@ -152,20 +152,17 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// LoadForCLI 加载用于运维命令的配置（不强制要求 token）。
+// LoadForCLI 加载用于运维命令的配置（不强制要求接入令牌）。
+//
+// 只放过「缺接入令牌」这一条错误，配置项整体保留。
+// 这里原本手抄了一份字段白名单重建 Config：新加的 MCP.Redact 不在名单里，
+// 于是 `zhichangd mcp` 永远读到默认值——脱敏档只在 serve 路径生效，
+// 而 stdio 路径恰恰是本地 AI 客户端用得最多的那条。
 func LoadForCLI() (Config, error) {
 	c, err := Load()
 	if err != nil && strings.Contains(err.Error(), "INGEST_TOKEN") {
-		return Config{
-			HTTPAddr:      c.HTTPAddr,
-			DBDSN:         c.DBDSN,
-			HomeTZ:        c.HomeTZ,
-			DedupMode:     c.DedupMode,
-			RawArchiveDir: c.RawArchiveDir,
-			MigrateOnBoot: c.MigrateOnBoot,
-			LogLevel:      c.LogLevel,
-			Retention:     c.Retention,
-		}, nil
+		c.IngestToken = ""
+		return c, nil
 	}
 	return c, err
 }
