@@ -56,19 +56,45 @@ func ParseWithFallback(s string, loc *time.Location) (time.Time, int, bool) {
 	return t, off, true
 }
 
-// LocalDate 计算记录自带的本地日期：
-//   - payload 携带偏移时，用该固定偏移求日期（不经过服务端时区）；
+// localTime 把 UTC 时刻还原成记录视角的本地时间：
+//   - payload 携带偏移时，用该固定偏移（不经过服务端时区）；
 //   - 未携带偏移时，回落到 home location；
 //   - 仍无则按 UTC。
-func LocalDate(t time.Time, offMin int, home *time.Location) string {
+func localTime(t time.Time, offMin int, home *time.Location) time.Time {
 	switch {
 	case offMin != OffsetUnknown:
-		return t.In(time.FixedZone("hae", offMin*60)).Format(LayoutDate)
+		return t.In(time.FixedZone("hae", offMin*60))
 	case home != nil:
-		return t.In(home).Format(LayoutDate)
+		return t.In(home)
 	default:
-		return t.UTC().Format(LayoutDate)
+		return t.UTC()
 	}
+}
+
+// LocalDate 计算记录自带的本地日期。
+func LocalDate(t time.Time, offMin int, home *time.Location) string {
+	return localTime(t, offMin, home).Format(LayoutDate)
+}
+
+// NightStartHour 是「本夜」的分界钟点：18:00 之前入睡算前一晚。
+// 与睡眠时间表矩阵的横轴（相对 18:00 的本夜分钟轴）是同一把尺子。
+const NightStartHour = 18
+
+// NightDate 计算一晚归属到哪个日历日。
+//
+// 按入睡时刻的日历日归属会撞车：一个人 27 号 02:23 入睡（26 号那晚的延续）
+// 与 27 号 23:39 入睡（27 号那晚）都落在 27 号——真实导出里全年 36 天如此。
+// 撞在一起的两天，天级值要么把两晚求和成一晚（虚高一倍），要么取最长丢掉一晚。
+// 所以凌晨入睡往前挪一天，让「一晚」与「一日」重新一一对应。
+//
+// 只对有真实入睡时刻的记录生效：调用方拿不到 sleepStart 时会回落到 HAE 的
+// 日桶（当地午夜），那是「哪天」而不是「几点睡」，按钟点判定会把整晚挪错一天。
+func NightDate(t time.Time, offMin int, home *time.Location) string {
+	local := localTime(t, offMin, home)
+	if local.Hour() < NightStartHour {
+		return local.AddDate(0, 0, -1).Format(LayoutDate)
+	}
+	return local.Format(LayoutDate)
 }
 
 // OffsetOrDefault 把未知偏移换成 home location 当日的偏移，用于落库展示。

@@ -93,6 +93,11 @@ func (s *Service) run(ctx context.Context, runID int64, payload *hae.Payload, me
 			sources[w.Source] = struct{}{}
 		}
 	}
+	// 睡眠会话不产生 samples，却是「睡眠时长」天级值的唯一来源：
+	// 不入队就没有人重算它，趋势页与概览的睡眠数值会一直空着，而且不报错。
+	for _, sl := range res.Sleep {
+		addDate(sl.LocalDate, postgres.SleepMetric)
+	}
 	// 睡眠与心电的来源不登记进 sources：那张表是「谁产出了 samples」的清单，
 	// 列表页按 samples 计数，把只产事件表的来源写进去只会多出一行「0 条样本」，
 	// 看着像故障。心电的来源名（实测是「移动心电图房颤提示软件」）随记录一同展示。

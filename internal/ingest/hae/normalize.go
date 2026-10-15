@@ -155,11 +155,14 @@ func (r *Result) normalizeSleep(m Metric, home *time.Location) {
 				}
 			}
 
-			// 睡眠日归属：以 sleepStart（无则 inBedStart / date）的本地日期为准
+			// 睡眠日归属：按「本夜」——入睡时刻（无则上床时刻）在 18:00 之前算前一晚。
+			// 两者都缺时只能退回 HAE 的日桶：那是「哪天」而不是「几点睡」（当地午夜），
+			// 按钟点判定会把整晚挪错一天，所以这条换算只对带真实时刻的记录生效。
 			anchorRaw := pt.SleepStart
 			if anchorRaw == "" {
 				anchorRaw = pt.InBedStart
 			}
+			hasClock := anchorRaw != ""
 			if anchorRaw == "" {
 				anchorRaw = pt.Date
 			}
@@ -170,6 +173,9 @@ func (r *Result) normalizeSleep(m Metric, home *time.Location) {
 			}
 			sess.TZOffsetMin = tz.OffsetOrDefault(offMin, anchor, home)
 			sess.LocalDate = tz.LocalDate(anchor, offMin, home)
+			if hasClock {
+				sess.LocalDate = tz.NightDate(anchor, offMin, home)
+			}
 			r.Sleep = append(r.Sleep, sess)
 			continue
 		}
