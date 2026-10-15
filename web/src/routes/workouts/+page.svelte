@@ -2,8 +2,9 @@
 	import { onMount } from 'svelte';
 	import { api, shiftDays, todayStr, type WorkoutRow } from '#lib/api';
 	import RangePicker from '#lib/components/RangePicker.svelte';
+	import { prefs, formatDuration } from '#lib/prefs.svelte';
 
-	let days = $state(90);
+	let days = $state(prefs.rangeDays);
 	let rows = $state<WorkoutRow[]>([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -57,7 +58,7 @@
 	</div>
 
 	{#if error}
-		<div class="card px-4 py-3 text-[13px] text-[#a32d2d]">{error}</div>
+		<div class="card px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
 	{/if}
 
 	<div class="grid grid-cols-3 gap-3">
@@ -67,7 +68,7 @@
 		</div>
 		<div class="card px-4 py-3">
 			<div class="text-[12px] text-[var(--color-ink-500)]">总时长</div>
-			<div class="num mt-1 text-[20px] font-medium">{Math.round(totalMin)} 分钟</div>
+			<div class="num mt-1 text-[20px] font-medium">{formatDuration(totalMin)}</div>
 		</div>
 		<div class="card px-4 py-3">
 			<div class="text-[12px] text-[var(--color-ink-500)]">总消耗</div>
@@ -93,7 +94,7 @@
 
 	<div class="card overflow-hidden">
 		<table class="w-full text-[13px]">
-			<thead class="bg-[#fafbfc] text-[12px] text-[var(--color-ink-500)]">
+			<thead class="bg-[var(--color-surface-2)] text-[12px] text-[var(--color-ink-500)]">
 				<tr>
 					<th class="px-4 py-2 text-left font-normal">开始</th>
 					<th class="px-4 py-2 text-left font-normal">项目</th>

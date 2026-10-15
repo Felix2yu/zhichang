@@ -3,8 +3,9 @@
 	import { api, shiftDays, todayStr, type EcgRecord, type EcgWaveform } from '#lib/api';
 	import RangePicker from '#lib/components/RangePicker.svelte';
 	import EcgStripChart from '#lib/components/EcgStripChart.svelte';
+	import { prefs } from '#lib/prefs.svelte';
 
-	let days = $state(90);
+	let days = $state(prefs.rangeDays);
 	let records = $state<EcgRecord[]>([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -94,7 +95,7 @@
 	</div>
 
 	{#if error}
-		<div class="card px-4 py-3 text-[13px] text-[#a32d2d]">{error}</div>
+		<div class="card px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
 	{/if}
 
 	<div class="grid grid-cols-3 gap-3">
@@ -134,7 +135,7 @@
 
 	<div class="card overflow-hidden">
 		<table class="w-full text-[13px]">
-			<thead class="bg-[#fafbfc] text-[12px] text-[var(--color-ink-500)]">
+			<thead class="bg-[var(--color-surface-2)] text-[12px] text-[var(--color-ink-500)]">
 				<tr>
 					<th class="px-4 py-2 text-left font-normal">测量时刻</th>
 					<th class="px-4 py-2 text-left font-normal">判定</th>
@@ -149,7 +150,7 @@
 					<tr
 						class="cursor-pointer border-t border-[var(--color-line)] transition-colors {selected?.id === r.id
 							? 'bg-[var(--color-brand-soft)]/60'
-							: 'hover:bg-[#fafbfc]'}"
+							: 'hover:bg-[var(--color-surface-2)]'}"
 						onclick={() => select(r)}
 					>
 						<td class="num px-4 py-2">{fmtTime(r.start, r.tz_offset_min)}</td>
@@ -209,7 +210,7 @@
 			{#if waveLoading}
 				<div class="py-8 text-center text-[13px] text-[var(--color-ink-500)]">波形加载中…</div>
 			{:else if waveError}
-				<div class="py-3 text-[13px] text-[#a32d2d]">{waveError}</div>
+				<div class="py-3 text-[13px] text-[var(--color-danger)]">{waveError}</div>
 			{:else if waveform && waveform.voltages.length > 0}
 				<EcgStripChart
 					voltages={waveform.voltages}

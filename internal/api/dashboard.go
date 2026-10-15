@@ -14,13 +14,13 @@ import (
 	"github.com/Felix2yu/zhichang/internal/store/postgres"
 )
 
-// Dashboard 提供仪表盘只读查询接口；目标写入是唯一需要令牌的口子。
+// Dashboard 提供仪表盘只读查询接口；目标与偏好写入是唯一需要令牌的口子。
 type Dashboard struct {
 	db     *postgres.DB
 	metric *metric.Registry
 	loc    *time.Location
 	tzName string
-	// settingsToken 为空时目标只读：宁可不给写，也不能在未配置令牌时敞开写接口。
+	// settingsToken 为空时目标与设置只读：宁可不给写，也不能在未配置令牌时敞开写接口。
 	settingsToken string
 }
 
@@ -47,10 +47,13 @@ func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/ecg/waveform", d.ecgWaveform)
 	r.Get("/api/sources", d.sources)
 	r.Get("/api/goals", d.listGoals)
+	r.Get("/api/settings", d.listSettings)
 	r.Get("/api/sync/status", d.syncStatus)
-	// 写接口：整个仪表盘只有这两条，必须带 ZHICHANG_SETTINGS_TOKEN
+	// 写接口：整个仪表盘只有这四条，必须带 ZHICHANG_SETTINGS_TOKEN
 	r.Put("/api/goals", d.requireSettings(d.putGoal))
 	r.Delete("/api/goals", d.requireSettings(d.deleteGoal))
+	r.Put("/api/settings", d.requireSettings(d.putSetting))
+	r.Delete("/api/settings", d.requireSettings(d.deleteSetting))
 }
 
 // requireSettings 校验 Bearer 令牌。未配置令牌时直接 503——
@@ -58,7 +61,7 @@ func (d *Dashboard) Register(r chi.Router) {
 func (d *Dashboard) requireSettings(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if d.settingsToken == "" {
-			WriteError(w, http.StatusServiceUnavailable, "未配置 ZHICHANG_SETTINGS_TOKEN，目标只读")
+			WriteError(w, http.StatusServiceUnavailable, "未配置 ZHICHANG_SETTINGS_TOKEN，目标与设置只读")
 			return
 		}
 		given := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")

@@ -75,6 +75,9 @@ export type SleepScore = {
 	baselineHr: number | null;
 	bedtimeMin: number | null;
 	bedtimeBaselineMin: number | null;
+	/** 就寝基准是用户设定的预期入睡时间（true）还是最近 13 晚中位数（false）。
+	 *  界面上「基准 22:30」和「目标 22:30」是两回事，标错等于骗人。 */
+	bedtimeBaselineIsTarget: boolean;
 	bedtimeDeviationMin: number | null;
 	awakeHr: number | null;
 	awakeCount: number | null;
@@ -136,6 +139,16 @@ export function minutesToClock(rel: number): string {
 	return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
 }
 
+/** 钟点 'HH:MM' → 相对 18:00 的分钟数（上面那个的逆向，同一根轴）。
+ *  解析不了回 null，让调用方决定「没设目标」而不是「目标是 0 点」。 */
+export function clockToBedtime(clock: string): number | null {
+	const m = /^(\d{2}):(\d{2})$/.exec(clock.trim());
+	if (!m) return null;
+	const mins = Number(m[1]) * 60 + Number(m[2]);
+	if (mins >= 1440) return null;
+	return (((mins - 1080) % 1440) + 1440) % 1440;
+}
+
 /** 环形展开：把一组时刻平移到基准 ref 附近，消除跨零点造成的中位数失真。 */
 function unwrap(xs: number[], ref: number): number[] {
 	return xs.map((v) => v + 1440 * Math.round((ref - v) / 1440));
@@ -145,7 +158,14 @@ function unwrap(xs: number[], ref: number): number[] {
  * 逐晚计算评分。传入的 nights 需已按日期升序（先用 collapseNights 收敛来源）。
  * 返回数组与入参一一对应；历史不足的夜晚 score 为 null（而不是给个猜的值）。
  */
-export function computeSleepScores(nights: SleepNight[]): SleepScore[] {
+export type SleepScoreOptions = {
+	/** 用户设定的预期入睡时间，相对 18:00 的分钟数（用 bedtimeMinutes 同一坐标轴）。
+	 *  给了就把它当就寝基准——用户问的是「我有没有守住自己定的点」，
+	 *  而不是「我和过去的自己比有没有跑偏」；不给则维持最近 13 晚中位数的老口径。 */
+	bedtimeTargetMin?: number | null;
+};
+
+export function computeSleepScores(nights: SleepNight[], opts?: SleepScoreOptions): SleepScore[] {
 	const bedtimes = nights.map((n) =>
 		n.sleep_start ? bedtimeMinutes(n.sleep_start, n.tz_offset_min ?? 0) : null
 	);
@@ -180,8 +200,17 @@ export function computeSleepScores(nights: SleepNight[]): SleepScore[] {
 		let bedtime: number | null = null;
 		let bedtimeBaselineMin: number | null = null;
 		let bedtimeDeviationMin: number | null = null;
-		if (todayBed != null && priorBed.length >= BEDTIME_MIN_NIGHTS) {
-			const base = median(unwrap(priorBed, priorBed[priorBed.length - 1]));
+		let baseIsTarget = false;
+		const targetMin = opts?.bedtimeTargetMin;
+		// 设了预期入睡时间就不必等满 13 晚历史：头一晚也能对着自己定的点打分
+		if (todayBed != null && (targetMin != null || priorBed.length >= BEDTIME_MIN_NIGHTS)) {
+			let base: number | null;
+			if (targetMin != null && Number.isFinite(targetMin)) {
+				base = ((targetMin % 1440) + 1440) % 1440;
+				baseIsTarget = true;
+			} else {
+				base = median(unwrap(priorBed, priorBed[priorBed.length - 1]));
+			}
 			if (base != null) {
 				const dev = Math.abs(unwrap([todayBed], base)[0] - base);
 				bedtimeDeviationMin = Math.round(dev);
@@ -233,6 +262,7 @@ export function computeSleepScores(nights: SleepNight[]): SleepScore[] {
 			baselineHr,
 			bedtimeMin: todayBed,
 			bedtimeBaselineMin,
+			bedtimeBaselineIsTarget: baseIsTarget,
 			bedtimeDeviationMin,
 			awakeHr,
 			awakeCount: count,

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { dataColor } from '#lib/theme.svelte';
+
 	// 卡片里的小走势图：只有几十像素高，用 ECharts 太重（一张卡一个实例，
 	// 首屏七八张卡就是七八个 canvas + 各自的 resize 监听）。这里用原生 SVG 画，
 	// 靠 viewBox + non-scaling-stroke 拉伸，线宽不跟着变形。
@@ -50,12 +52,13 @@
 		aria-hidden="true"
 	>
 		{#if geom.baseY !== null}
+			<!-- 常态参考线是结构色，写在 style 里才能用 var()（SVG 呈现属性不解析变量） -->
 			<line
 				x1="0"
 				x2={VW}
 				y1={geom.baseY}
 				y2={geom.baseY}
-				stroke="#c3ccd6"
+				style="stroke: var(--color-line-strong)"
 				stroke-width="1"
 				stroke-dasharray="3 2"
 				vector-effect="non-scaling-stroke"
@@ -64,13 +67,19 @@
 		<polyline
 			points={geom.line}
 			fill="none"
-			stroke={color}
+			stroke={dataColor(color)}
 			stroke-width="1.5"
 			stroke-linejoin="round"
 			stroke-linecap="round"
 			vector-effect="non-scaling-stroke"
 		/>
-		<circle cx={geom.lastX} cy={geom.lastY} r="1.8" fill={color} vector-effect="non-scaling-stroke" />
+		<circle
+			cx={geom.lastX}
+			cy={geom.lastY}
+			r="1.8"
+			fill={dataColor(color)}
+			vector-effect="non-scaling-stroke"
+		/>
 	</svg>
 {:else}
 	<!-- 点数不足时留出同样的高度，避免有/无走势时卡片高度不一致造成网格错位 -->

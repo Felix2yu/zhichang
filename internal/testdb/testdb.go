@@ -130,6 +130,13 @@ func boot() (string, *embeddedpostgres.EmbeddedPostgres, error) {
 			Username("postgres").
 			Password("postgres").
 			Database("zhichang_test").
+			// 必须显式指定编码：LANG/LC_ALL 未设置时 initdb 回落到 C locale，
+			// 建出来的库是 SQL_ASCII，0007 里的 U&'\00A0' 转义会直接报
+			// 「conversion between UTF8 and SQL_ASCII is not supported」，
+			// 于是整个集成测试组在一台干净的开发机上静默全红。
+			// 只指定编码而不动 locale：en_US.UTF-8 / C.UTF-8 在 macOS 与 Linux
+			// 镜像里并非都存在，写死 locale 会把可用范围换窄。
+			Encoding("UTF8").
 			CachePath(cache).
 			RuntimePath(filepath.Join(run, "extracted"+sfx)).
 			DataPath(filepath.Join(run, "pgdata"+sfx)).

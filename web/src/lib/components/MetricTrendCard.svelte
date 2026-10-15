@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import * as echarts from 'echarts';
+	import { dataColor, palette } from '#lib/theme.svelte';
 
 	// 单指标趋势卡：一张卡只承载一个指标、一张图、一套坐标轴与单位。
 	// 这是趋势页的展示原子——分组只决定卡片的版面归属，绝不把多指标塞进同一张图。
@@ -82,33 +83,34 @@
 	let maxAbs = $derived.by(() => points.reduce((m, p) => Math.max(m, Math.abs(p.value)), 0));
 
 	function buildOption(): echarts.EChartsOption {
+		const p = palette();
 		const af = axisFmt(maxAbs);
 		return {
 			animationDuration: 260,
 			grid: { left: 4, right: 6, top: 8, bottom: 4, containLabel: true },
 			tooltip: {
 				trigger: 'axis',
-				backgroundColor: '#fff',
-				borderColor: '#e6e8ec',
+				backgroundColor: p.surface,
+				borderColor: p.line,
 				borderWidth: 1,
-				textStyle: { color: '#16181d', fontSize: 12 },
-				axisPointer: { type: chartType === 'bar' ? 'shadow' : 'line', lineStyle: { color: '#c9ccd3' } },
+				textStyle: { color: p.ink, fontSize: 12 },
+				axisPointer: { type: chartType === 'bar' ? 'shadow' : 'line', lineStyle: { color: p.line } },
 				formatter: (params) => {
 					const arr = Array.isArray(params) ? params : [params];
 					if (arr.length === 0) return '';
-					const p = arr[0] as { axisValue?: string; value?: number; marker?: string };
-					const date = p.axisValue ?? '';
-					return `<div style="font-size:11px;color:#6b7280;margin-bottom:2px">${date}</div>
-						<div style="font-size:12px;color:#16181d">${p.marker ?? ''}${name} <b>${fmt(Number(p.value ?? 0))}${unit ? ' ' + unit : ''}</b></div>`;
+					const pp = arr[0] as { axisValue?: string; value?: number; marker?: string };
+					const date = pp.axisValue ?? '';
+					return `<div style="font-size:11px;color:${p.inkSoft};margin-bottom:2px">${date}</div>
+						<div style="font-size:12px;color:${p.ink}">${pp.marker ?? ''}${name} <b>${fmt(Number(pp.value ?? 0))}${unit ? ' ' + unit : ''}</b></div>`;
 				}
 			},
 			xAxis: {
 				type: 'category',
 				data: points.map((p) => p.date.slice(5)),
 				boundaryGap: chartType === 'bar',
-				axisLine: { lineStyle: { color: '#e6e8ec' } },
+				axisLine: { lineStyle: { color: p.line } },
 				axisTick: { show: false },
-				axisLabel: { color: '#9aa0a6', fontSize: 10, hideOverlap: true }
+				axisLabel: { color: p.inkFaint, fontSize: 10, hideOverlap: true }
 			},
 			yAxis: {
 				type: 'value',
@@ -116,8 +118,8 @@
 				splitNumber: 3,
 				axisLine: { show: false },
 				axisTick: { show: false },
-				splitLine: { lineStyle: { color: '#f0f1f4' } },
-				axisLabel: { color: '#9aa0a6', fontSize: 10, formatter: (v: number) => af(v) }
+				splitLine: { lineStyle: { color: p.split } },
+				axisLabel: { color: p.inkFaint, fontSize: 10, formatter: (v: number) => af(v) }
 			},
 			series: [
 				{
@@ -127,12 +129,12 @@
 					symbol: 'circle',
 					symbolSize: 3,
 					showSymbol: false,
-					lineStyle: { width: 1.8, color },
-					itemStyle: { color, borderRadius: chartType === 'bar' ? [3, 3, 0, 0] : 0 },
+					lineStyle: { width: 1.8, color: dataColor(color) },
+					itemStyle: { color: dataColor(color), borderRadius: chartType === 'bar' ? [3, 3, 0, 0] : 0 },
 					barMaxWidth: 14,
 					areaStyle:
 						chartType === 'line'
-							? { color, opacity: 0.08 }
+							? { color: dataColor(color), opacity: 0.08 }
 							: undefined
 				}
 			]
@@ -219,7 +221,7 @@
 			{#if staleText}
 				<span
 					class="shrink-0 rounded px-1.5 py-0.5 text-[10px] {staleStrong
-						? 'bg-[#f2e9d8] text-[#8a5d18]'
+						? 'bg-[var(--color-warn)]/15 text-[var(--color-warn)]'
 						: 'bg-[var(--color-line)]/60 text-[var(--color-ink-500)]'}"
 					title="该指标久未更新，活跃度低，排序时自动后移"
 					>{staleText}</span
