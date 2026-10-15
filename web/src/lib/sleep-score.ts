@@ -111,8 +111,8 @@ function median(xs: number[]): number | null {
  * (local_date, source, sleep_start) 唯一），也可能有「小睡 + 主睡眠」多条。
  * 一律按项目既有惯例收敛：取当晚总睡眠最长的那条。
  */
-export function collapseNights(rows: SleepNight[]): SleepNight[] {
-	const byDate = new Map<string, SleepNight>();
+export function collapseNights<T extends SleepNight>(rows: T[]): T[] {
+	const byDate = new Map<string, T>();
 	for (const r of rows) {
 		const cur = byDate.get(r.local_date);
 		if (!cur || (r.total_sleep_hr ?? -1) > (cur.total_sleep_hr ?? -1)) byDate.set(r.local_date, r);
