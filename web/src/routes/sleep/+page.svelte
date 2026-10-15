@@ -59,7 +59,10 @@
 
 	let from = $derived(shiftDays(-days + 1, todayStr()));
 	/** 展示范围：前置窗口只用来算基准，不进图表与表格 */
-	let rows = $derived(allRows.filter((r) => r.local_date >= from));
+	/** 范围内每一次睡眠会话：同一晚可能有多条（跨来源各报一条，或同日两次入睡） */
+	let sessions = $derived(allRows.filter((r) => r.local_date >= from));
+	/** 一晚一条：图表、均值、达标与覆盖率都按晚算，跨来源取最长的那条 */
+	let rows = $derived(collapseNights(sessions));
 
 	let nights = $derived(collapseNights(allRows));
 	/** 设置页定的预期入睡时间（相对 18:00 的分钟）；没设就是 null，评分退回 13 晚中位数口径 */
@@ -901,7 +904,7 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each [...rows].reverse() as r (r.local_date + r.source)}
+					{#each [...sessions].reverse() as r (r.local_date + r.source + (r.sleep_start ?? ''))}
 						<tr
 							class="cursor-pointer border-t border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"
 							class:bg-[var(--color-surface-3)]={r.local_date === night}
