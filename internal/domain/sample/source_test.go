@@ -10,16 +10,16 @@ func TestCleanSourceNormalizesInvisibleChars(t *testing.T) {
 		want string
 	}{
 		// 真实导出里 249 个点位的形态：NBSP 而不是普通空格。
-		{"真实导出的 NBSP", "子翼的Apple\u00a0Watch", "子翼的Apple Watch"},
-		{"普通空格不变", "子翼的Apple Watch", "子翼的Apple Watch"},
-		{"表意空格收成普通空格", "子翼的Apple\u3000Watch", "子翼的Apple Watch"},
+		{"真实导出的 NBSP", "小明的Apple\u00a0Watch", "小明的Apple Watch"},
+		{"普通空格不变", "小明的Apple Watch", "小明的Apple Watch"},
+		{"表意空格收成普通空格", "小明的Apple\u3000Watch", "小明的Apple Watch"},
 		{"窄空格", "Apple\u2009Watch", "Apple Watch"},
 		{"无间隔空格", "Apple\u202fWatch", "Apple Watch"},
 		{"数字空格", "Apple\u2007Watch", "Apple Watch"},
 		{"制表与换行", "Apple\t\nWatch", "Apple Watch"},
 		{"连续空白压缩", "Apple   Watch", "Apple Watch"},
 		{"首尾空白去掉", "  Apple Watch  ", "Apple Watch"},
-		{"混合空白", "\u00a0子翼的 \t Apple\u3000Watch\u00a0", "子翼的 Apple Watch"},
+		{"混合空白", "\u00a0小明的 \t Apple\u3000Watch\u00a0", "小明的 Apple Watch"},
 
 		// 零宽字符不是空白，必须整个删掉——否则 "Apple Watch" 会分裂成 "AppleWatch"。
 		{"零宽空格删除", "Apple\u200bWatch", "AppleWatch"},
@@ -30,9 +30,9 @@ func TestCleanSourceNormalizesInvisibleChars(t *testing.T) {
 		{"零宽字符夹在空白中", "Apple \u200b Watch", "Apple Watch"},
 
 		// 多来源分隔符：HAE 把这组来源拼成一个串，且管两侧空格不固定。
-		{"管两侧无空格", "子翼的Apple Watch|子翼的iPhone", "子翼的Apple Watch | 子翼的iPhone"},
-		{"管左侧有空格", "子翼的Apple Watch |子翼的iPhone", "子翼的Apple Watch | 子翼的iPhone"},
-		{"管两侧都有空格（含 NBSP）", "血氧\u00a0| 子翼的Apple\u00a0Watch", "血氧 | 子翼的Apple Watch"},
+		{"管两侧无空格", "小明的Apple Watch|小明的iPhone", "小明的Apple Watch | 小明的iPhone"},
+		{"管左侧有空格", "小明的Apple Watch |小明的iPhone", "小明的Apple Watch | 小明的iPhone"},
+		{"管两侧都有空格（含 NBSP）", "血氧\u00a0| 小明的Apple\u00a0Watch", "血氧 | 小明的Apple Watch"},
 		{"空段丢弃", "a||b", "a | b"},
 		{"首尾管丢弃", "|a|", "a"},
 
@@ -57,10 +57,10 @@ func TestCleanSourceNormalizesInvisibleChars(t *testing.T) {
 // 幂等：归一后的值再归一必须不变，否则「同一来源写两次」会持续产生新值。
 func TestCleanSourceIsIdempotent(t *testing.T) {
 	inputs := []string{
-		"子翼的Apple\u00a0Watch",
+		"小明的Apple\u00a0Watch",
 		"Apple\u200bWatch",
 		"  a | b  ",
-		"子翼的Apple\u00a0Watch|子翼的iPhone",
+		"小明的Apple\u00a0Watch|小明的iPhone",
 		"",
 	}
 	for _, in := range inputs {
@@ -75,20 +75,20 @@ func TestCleanSourceIsIdempotent(t *testing.T) {
 // 显示成多条「看起来一样」的记录。
 func TestCleanSourceCollapsesRealExportVariants(t *testing.T) {
 	groups := map[string][]string{
-		"子翼的Apple Watch": {
-			"子翼的Apple\u00a0Watch",
-			"子翼的Apple Watch",
-			"子翼的Apple\u3000Watch",
-			"子翼的Apple \u200bWatch",
+		"小明的Apple Watch": {
+			"小明的Apple\u00a0Watch",
+			"小明的Apple Watch",
+			"小明的Apple\u3000Watch",
+			"小明的Apple \u200bWatch",
 		},
-		"子翼的Apple Watch | 子翼的iPhone": {
-			"子翼的Apple\u00a0Watch|子翼的iPhone",
-			"子翼的Apple Watch | 子翼的iPhone",
-			"子翼的Apple Watch\u00a0|\u00a0子翼的iPhone",
+		"小明的Apple Watch | 小明的iPhone": {
+			"小明的Apple\u00a0Watch|小明的iPhone",
+			"小明的Apple Watch | 小明的iPhone",
+			"小明的Apple Watch\u00a0|\u00a0小明的iPhone",
 		},
-		"血氧 | 子翼的Apple Watch": {
-			"血氧 | 子翼的Apple\u00a0Watch",
-			"血氧|子翼的Apple Watch",
+		"血氧 | 小明的Apple Watch": {
+			"血氧 | 小明的Apple\u00a0Watch",
+			"血氧|小明的Apple Watch",
 		},
 	}
 	for want, variants := range groups {

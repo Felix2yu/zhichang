@@ -18,13 +18,13 @@ func TestConvertUnit(t *testing.T) {
 		reason    string
 	}{
 		{
-			name: "活动能量 kJ 换成 kcal", value: 1090.86, from: "kJ", to: "kcal",
-			wantValue: 1090.86 / 4.184, wantUnit: "kcal",
-			reason: "HAE 新版本给 kJ，字典声明 kcal；不换算会让「1091 kcal」虚高 4.18 倍",
+			name: "活动能量 kJ 换成 kcal", value: 1255.2, from: "kJ", to: "kcal",
+			wantValue: 1255.2 / 4.184, wantUnit: "kcal",
+			reason: "HAE 新版本给 kJ，字典声明 kcal；不换算会让「1255 kcal」虚高 4.18 倍",
 		},
 		{
-			name: "基础能量 kJ 换成 kcal", value: 7885.5496910674565, from: "kJ", to: "kcal",
-			wantValue: 7885.5496910674565 / 4.184, wantUnit: "kcal",
+			name: "基础能量 kJ 换成 kcal", value: 8786.4, from: "kJ", to: "kcal",
+			wantValue: 8786.4 / 4.184, wantUnit: "kcal",
 			reason: "同上，基础能量走的是同一条导入路径",
 		},
 		{

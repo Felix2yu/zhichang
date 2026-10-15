@@ -44,11 +44,11 @@ func TestNormalizeV3ValuesAndUnits(t *testing.T) {
 	}
 
 	// 能量：payload 给 kJ，字典声明 kcal，入库必须换算成 kcal（否则虚高 4.184 倍）
-	almost(t, "活动能量", value["active_energy"], 260.722, 1e-6)
+	almost(t, "活动能量", value["active_energy"], 300.0, 1e-6)
 	if unit["active_energy"] != "kcal" {
 		t.Fatalf("活动能量单位应为 kcal，实际 %q", unit["active_energy"])
 	}
-	almost(t, "基础能量", value["basal_energy_burned"], 1884.6916087637323, 1e-6)
+	almost(t, "基础能量", value["basal_energy_burned"], 2100.0, 1e-6)
 	if unit["basal_energy_burned"] != "kcal" {
 		t.Fatalf("基础能量单位应为 kcal，实际 %q", unit["basal_energy_burned"])
 	}
@@ -58,15 +58,15 @@ func TestNormalizeV3ValuesAndUnits(t *testing.T) {
 		t.Fatalf("体重单位应为 kg，实际 %q", unit["body_mass"])
 	}
 	// 心率：count/min 与 bpm 只是标签差异，数值不动、原文单位保留
-	almost(t, "心率", value["heart_rate"], 80.07711823265892, 1e-9)
+	almost(t, "心率", value["heart_rate"], 72.41860465116279, 1e-9)
 	if unit["heart_rate"] != "count/min" {
 		t.Fatalf("心率单位不该被改写（不是换算关系），实际 %q", unit["heart_rate"])
 	}
-	if hr == nil || hr.min == nil || *hr.min != 52 || hr.max == nil || *hr.max != 130 {
+	if hr == nil || hr.min == nil || *hr.min != 55 || hr.max == nil || *hr.max != 128 {
 		t.Fatalf("心率极值未随主值一起落库: %+v", hr)
 	}
 	// 计数量：单位一致，原样
-	almost(t, "步数", value["step_count"], 2318, 1e-9)
+	almost(t, "步数", value["step_count"], 4321, 1e-9)
 	if unit["step_count"] != "count" {
 		t.Fatalf("步数单位应为 count，实际 %q", unit["step_count"])
 	}
@@ -89,22 +89,22 @@ func TestNormalizeV3Workout(t *testing.T) {
 
 	// 新版形态：对象来源 + 秒级 duration + distance 字段 + kJ 能量
 	nw := res.Workouts[0]
-	if nw.Name != "户外 步行" || nw.Source != "子翼的Apple Watch" {
+	if nw.Name != "户外 步行" || nw.Source != "小明的Apple Watch" {
 		t.Fatalf("运动名/来源解析错误: name=%q source=%q", nw.Name, nw.Source)
 	}
-	// duration 890.47 秒 → 14.84 分钟；按分钟存的旧代码会算出 890 分钟
-	almost(t, "新版运动时长(分钟)", nw.DurationMin, 14.841092324256897, 1e-6)
+	// duration 890.47 秒 → 14.84 分钟；按分钟存的旧代码会算出 1234 分钟
+	almost(t, "新版运动时长(分钟)", nw.DurationMin, 20.575, 1e-6)
 	if nw.TotalDistance == nil {
 		t.Fatal("distance 字段必须被识别，否则运动页距离列全是「—」")
 	}
-	almost(t, "新版运动距离", *nw.TotalDistance, 0.9632032549719515, 1e-9)
+	almost(t, "新版运动距离", *nw.TotalDistance, 1.8525, 1e-9)
 	if nw.DistanceUnit != "km" {
 		t.Fatalf("距离单位应为 km，实际 %q", nw.DistanceUnit)
 	}
 	if nw.TotalEnergy == nil {
 		t.Fatal("总能耗缺失")
 	}
-	almost(t, "新版运动能耗", *nw.TotalEnergy, 75.76221804394135, 1e-6)
+	almost(t, "新版运动能耗", *nw.TotalEnergy, 120.0, 1e-6)
 	if nw.EnergyUnit != "kcal" {
 		t.Fatalf("运动能耗单位应为 kcal，实际 %q", nw.EnergyUnit)
 	}
@@ -125,7 +125,7 @@ func TestNormalizeV3Workout(t *testing.T) {
 }
 
 // workoutDurationMin 是纯函数，直接把两版的判据全锁在表里。
-// 判错的代价：秒当分钟 → 15 分钟步行显示成 890 分钟；分钟当秒 → 30 分钟显示成 0.5 分钟。
+// 判错的代价：秒当分钟 → 15 分钟步行显示成 1234 分钟；分钟当秒 → 30 分钟显示成 0.5 分钟。
 func TestWorkoutDurationMinUnitDetection(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -134,7 +134,7 @@ func TestWorkoutDurationMinUnitDetection(t *testing.T) {
 		want   float64
 		reason string
 	}{
-		{"新版按秒给（890.47 秒对 891 秒跨度）", 890.4655394554138, 891 * time.Second, 14.841092324256897,
+		{"新版按秒给（890.47 秒对 891 秒跨度）", 1234.5, 1235 * time.Second, 20.575,
 			"隐含秒数几乎等于跨度，判为秒"},
 		{"旧版按分钟给（30 对 30 分钟跨度）", 30, 30 * time.Minute, 30,
 			"隐含秒数（1800）等于跨度，判为分钟"},

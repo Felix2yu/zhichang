@@ -19,16 +19,16 @@ func ecgPayload(body string) string {
 }
 
 // 一段最小但形态完整的心电记录（时间带偏移，与真实导出一致）。
-const ecgBase = `"start":"2026-10-13 23:16:15 +0800","end":"2026-10-13 23:16:45 +0800",` +
+const ecgBase = `"start":"2026-10-13 09:16:15 +0800","end":"2026-10-13 09:16:45 +0800",` +
 	`"classification":"窦性心律","averageHeartRate":78,"numberOfVoltageMeasurements":3,` +
 	`"samplingFrequency":512,"source":{"name":"移动心电图房颤提示软件","identifier":"com.apple.health.ecg"}`
 
 func TestNormalizeECGRecord(t *testing.T) {
 	res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
 		ecgPayload(`{`+ecgBase+`,"voltageMeasurements":[`+
-			`{"date":1791904575.8,"voltage":-27.4,"units":"mcV"},`+
-			`{"date":1791904575.81,"voltage":0,"units":"mcV"},`+
-			`{"date":1791904575.82,"voltage":43.875,"units":"mcV"}]}`))
+			`{"date":1791882975.1,"voltage":-63.28,"units":"mcV"},`+
+			`{"date":1791882975.102,"voltage":0,"units":"mcV"},`+
+			`{"date":1791882975.12,"voltage":66.42,"units":"mcV"}]}`))
 
 	if len(res.ECG) != 1 {
 		t.Fatalf("应归一 1 条心电记录，实际 %d（skipped=%d）", len(res.ECG), res.Skipped)
@@ -52,14 +52,14 @@ func TestNormalizeECGRecord(t *testing.T) {
 	if len(r.Voltages) != 3 || r.VoltageCount != 3 {
 		t.Fatalf("波形点数错误: %d / %d", len(r.Voltages), r.VoltageCount)
 	}
-	if r.Voltages[0] != -27.4 || r.Voltages[1] != 0 || r.Voltages[2] != 43.875 {
+	if r.Voltages[0] != -63.28 || r.Voltages[1] != 0 || r.Voltages[2] != 66.42 {
 		t.Fatalf("电压值错误: %v", r.Voltages)
 	}
 	// 时间与 local_date 由记录自带偏移推导：+0800 的 23:16 属于 10-13
-	if got := r.StartTime.UTC().Format(time.RFC3339); got != "2026-10-13T15:16:15Z" {
+	if got := r.StartTime.UTC().Format(time.RFC3339); got != "2026-10-13T01:16:15Z" {
 		t.Fatalf("起始时间错误: %s", got)
 	}
-	if got := r.EndTime.UTC().Format(time.RFC3339); got != "2026-10-13T15:16:45Z" {
+	if got := r.EndTime.UTC().Format(time.RFC3339); got != "2026-10-13T01:16:45Z" {
 		t.Fatalf("结束时间错误: %s", got)
 	}
 	if r.LocalDate != "2026-10-13" || r.TZOffsetMin != 480 {
@@ -85,7 +85,7 @@ func TestNormalizeECGClassificationIsLocalized(t *testing.T) {
 		{"Inconclusive Poor Recording", ecg.CodeInconclusivePoorRecording},
 	}
 	for _, tt := range tests {
-		raw := ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","end":"2026-10-13 23:16:45 +0800",` +
+		raw := ecgPayload(`{"start":"2026-10-13 09:16:15 +0800","end":"2026-10-13 09:16:45 +0800",` +
 			`"classification":` + `"` + tt.raw + `",` +
 			`"averageHeartRate":70,"samplingFrequency":512,"source":"Apple Watch","voltageMeasurements":[]}`)
 		res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC, raw)
@@ -106,7 +106,7 @@ func TestNormalizeECGClassificationIsLocalized(t *testing.T) {
 // 多了一层归一不等于可以丢数据。
 func TestNormalizeECGUnknownClassificationStillStored(t *testing.T) {
 	res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
-		ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","classification":"室性早搏",`+
+		ecgPayload(`{"start":"2026-10-13 09:16:15 +0800","classification":"室性早搏",`+
 			`"source":"Apple Watch","voltageMeasurements":[]}`))
 	if len(res.ECG) != 1 {
 		t.Fatalf("认不出判定也要入库，实际 %d 条", len(res.ECG))
@@ -122,7 +122,7 @@ func TestNormalizeECGUnknownClassificationStillStored(t *testing.T) {
 // 缺 end 时不能把结束时间留在零值（会算出一个公元 1 年的时长）。
 func TestNormalizeECGEndFallsBackToStart(t *testing.T) {
 	res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
-		ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","classification":"窦性心律",`+
+		ecgPayload(`{"start":"2026-10-13 09:16:15 +0800","classification":"窦性心律",`+
 			`"source":"Apple Watch","voltageMeasurements":[]}`))
 	if len(res.ECG) != 1 {
 		t.Fatalf("应归一 1 条，实际 %d", len(res.ECG))
@@ -183,7 +183,7 @@ func TestNormalizeECGWithoutVoltageMeasurements(t *testing.T) {
 func TestNormalizeECGIgnoresNonPositiveSamplingFrequency(t *testing.T) {
 	for _, raw := range []string{`"samplingFrequency":0`, `"samplingFrequency":-512`} {
 		res := mustNormalize(t, metric.New(metric.Defaults()), time.UTC,
-			ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","classification":"窦性心律",`+
+			ecgPayload(`{"start":"2026-10-13 09:16:15 +0800","classification":"窦性心律",`+
 				`"source":"Apple Watch",`+raw+`,"voltageMeasurements":[{"voltage":1,"units":"mcV"}]}`))
 		if len(res.ECG) != 1 {
 			t.Fatalf("%s：应归一 1 条，实际 %d", raw, len(res.ECG))
@@ -210,11 +210,11 @@ func TestNormalizeECGDoesNotLeakIntoOtherChannels(t *testing.T) {
 // 真实导出文件的形态：voltage 是浮点、date 是 unix 秒、source 是对象。
 // 这里只断言「解析器不挑形态」，具体数值由真实文件端到端用例覆盖。
 func TestParseECGAcceptsRealShape(t *testing.T) {
-	raw := ecgPayload(`{"start":"2026-10-13 23:16:15 +0800","end":"2026-10-13 23:16:45 +0800",` +
+	raw := ecgPayload(`{"start":"2026-10-13 09:16:15 +0800","end":"2026-10-13 09:16:45 +0800",` +
 		`"classification":"窦性心律","averageHeartRate":78,"numberOfVoltageMeasurements":2,` +
 		`"samplingFrequency":512,"source":{"name":"移动心电图房颤提示软件"},` +
-		`"voltageMeasurements":[{"date":1791904575.806,"voltage":-27.4,"units":"mcV"},` +
-		`{"date":1791904575.808,"voltage":"43.875","units":"mcV"}]}`)
+		`"voltageMeasurements":[{"date":1791882975.100,"voltage":-63.28,"units":"mcV"},` +
+		`{"date":1791882975.104,"voltage":"66.42","units":"mcV"}]}`)
 	p, err := ParsePayload(strings.NewReader(raw))
 	if err != nil {
 		t.Fatalf("心电图形态变化不该导致整包解析失败: %v", err)
@@ -226,8 +226,8 @@ func TestParseECGAcceptsRealShape(t *testing.T) {
 		t.Fatalf("电压点应为 2 个，实际 %d", got)
 	}
 	// 字符串形式的电压也要认（Float 容错）
-	if v := p.Data.ECG[0].VoltageMeasurements[1].Voltage; !v.Set || v.Value != 43.875 {
-		t.Fatalf("字符串电压应解析为 43.875，实际 %+v", v)
+	if v := p.Data.ECG[0].VoltageMeasurements[1].Voltage; !v.Set || v.Value != 66.42 {
+		t.Fatalf("字符串电压应解析为 66.42，实际 %+v", v)
 	}
 	// 心电图不计入 received（与聚合睡眠同理：不产生 samples）
 	if p.Count() != 0 {

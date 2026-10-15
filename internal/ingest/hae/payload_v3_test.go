@@ -39,13 +39,13 @@ func TestParsePayloadAcceptsNewExportShape(t *testing.T) {
 	// 对象形态的来源：取 name，不带 identifier 的壳。
 	// 样例文件里的名字带 NBSP（真实导出就是这样），出口处统一收成普通空格。
 	w := p.Data.Workouts[0]
-	if got := string(w.Source); got != "子翼的Apple Watch" {
+	if got := string(w.Source); got != "小明的Apple Watch" {
 		t.Fatalf("对象来源应取 name 字段并归一空白，实际 %q", got)
 	}
-	if !w.Duration.Set || w.Duration.Value != 890.4655394554138 {
+	if !w.Duration.Set || w.Duration.Value != 1234.5 {
 		t.Fatalf("新版 duration（秒）解析错误: %+v", w.Duration)
 	}
-	if !w.Distance.Qty.Set || w.Distance.Qty.Value != 0.9632032549719515 || w.Distance.Units != "km" {
+	if !w.Distance.Qty.Set || w.Distance.Qty.Value != 1.8525 || w.Distance.Units != "km" {
 		t.Fatalf("distance 字段解析错误: %+v", w.Distance)
 	}
 	if w.TotalDistance.Qty.Set {
@@ -77,11 +77,11 @@ func TestSourceNameUnmarshal(t *testing.T) {
 		want string
 	}{
 		{"字符串形态（旧版）", `"source":"Apple Watch"`, "Apple Watch"},
-		{"对象形态（新版）", `"source":{"name":"子翼的Apple Watch","identifier":"com.apple.health.x"}`, "子翼的Apple Watch"},
+		{"对象形态（新版）", `"source":{"name":"小明的Apple Watch","identifier":"com.apple.health.x"}`, "小明的Apple Watch"},
 		// 真实导出用的是 NBSP：出口必须收成普通空格，否则同一台设备会分裂成两个来源
-		{"字符串里的 NBSP", `"source":"子翼的Apple\u00a0Watch"`, "子翼的Apple Watch"},
-		{"对象 name 里的 NBSP", `"source":{"name":"子翼的Apple\u00a0Watch"}`, "子翼的Apple Watch"},
-		{"多来源拼串归一管空格", `"source":"子翼的Apple\u00a0Watch|子翼的iPhone"`, "子翼的Apple Watch | 子翼的iPhone"},
+		{"字符串里的 NBSP", `"source":"小明的Apple\u00a0Watch"`, "小明的Apple Watch"},
+		{"对象 name 里的 NBSP", `"source":{"name":"小明的Apple\u00a0Watch"}`, "小明的Apple Watch"},
+		{"多来源拼串归一管空格", `"source":"小明的Apple\u00a0Watch|小明的iPhone"`, "小明的Apple Watch | 小明的iPhone"},
 		{"对象缺少 name", `"source":{"identifier":"x"}`, ""},
 		{"空字符串", `"source":""`, ""},
 		{"JSON null", `"source":null`, ""},
@@ -107,10 +107,10 @@ func TestPointSourceAcceptsObject(t *testing.T) {
 	// 指标点目前是字符串来源，但新版把运动来源改成对象之后，同一份代码里两种位置都可能变。
 	// 点位上的来源同样走容错类型，避免同类故障在指标侧重演。
 	var p Point
-	if err := json.Unmarshal([]byte(`{"source":{"name":"子翼的Apple Watch"}}`), &p); err != nil {
+	if err := json.Unmarshal([]byte(`{"source":{"name":"小明的Apple Watch"}}`), &p); err != nil {
 		t.Fatal(err)
 	}
-	if string(p.Source) != "子翼的Apple Watch" {
+	if string(p.Source) != "小明的Apple Watch" {
 		t.Fatalf("点位来源应取 name，实际 %q", string(p.Source))
 	}
 }
@@ -125,7 +125,7 @@ func TestQuantityUnmarshalTolerant(t *testing.T) {
 		wantQty   float64
 		wantUnits string
 	}{
-		{"对象形态", `{"qty":316.9891202958506,"units":"kJ"}`, true, 316.9891202958506, "kJ"},
+		{"对象形态", `{"qty":502.08,"units":"kJ"}`, true, 502.08, "kJ"},
 		{"字符串数值", `{"qty":"120","units":"kcal"}`, true, 120, "kcal"},
 		{"只有数值没有单位", `{"qty":5}`, true, 5, ""},
 		{"裸数值", `11.5`, true, 11.5, ""},

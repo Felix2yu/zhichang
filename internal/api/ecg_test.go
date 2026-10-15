@@ -48,7 +48,7 @@ func TestECGListContract(t *testing.T) {
 	runID := newRun(t, db)
 
 	withWave := ecgRec(dateInLoc(0), 23, 16, "窦性心律")
-	withWave.Voltages = []float64{-27.4, 0, 43.875}
+	withWave.Voltages = []float64{-63.28, 0, 66.42}
 	withWave.VoltageCount = len(withWave.Voltages)
 
 	bare := ecgRec(dateInLoc(-3), 22, 45, "Sinus Rhythm") // 英文原文，归一到同一个码
@@ -127,7 +127,7 @@ func TestECGWaveformContract(t *testing.T) {
 	runID := newRun(t, db)
 
 	rec := ecgRec(dateInLoc(0), 23, 16, "窦性心律")
-	rec.Voltages = []float64{-27.408340454101562, -1.1310367584228516, 0, 898.75146484375}
+	rec.Voltages = []float64{-63.284713745117188, -14.61724853515625, 0, 407.3128662109375}
 	rec.VoltageCount = len(rec.Voltages)
 	addECG(t, db, runID, rec)
 
@@ -146,10 +146,10 @@ func TestECGWaveformContract(t *testing.T) {
 		t.Fatalf("波形点数应为 4，实际 %d", len(vs))
 	}
 	// 浮点必须原样往返，不能被 float32 截断
-	if vs[0] != -27.408340454101562 {
+	if vs[0] != -63.284713745117188 {
 		t.Fatalf("首个电压值被截断了: %v", vs[0])
 	}
-	if vs[3] != 898.75146484375 {
+	if vs[3] != 407.3128662109375 {
 		t.Fatalf("末个电压值被截断了: %v", vs[3])
 	}
 	if r.str(t, "unit") != "mcV" {

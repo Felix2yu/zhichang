@@ -860,18 +860,18 @@ func TestIngestNewExportShapeIsNotBadRequest(t *testing.T) {
 		`SELECT value, unit FROM samples WHERE metric='active_energy'`).Scan(&value, &unit); err != nil {
 		t.Fatal(err)
 	}
-	if unit != "kcal" || value < 260.72 || value > 260.73 {
-		t.Fatalf("活动能量应为约 260.72 kcal，实际 %v %s", value, unit)
+	if unit != "kcal" || value < 300.0 || value > 300.01 {
+		t.Fatalf("活动能量应为约 300.00 kcal，实际 %v %s", value, unit)
 	}
 
-	// 运动时长按分钟落库（新版给的是秒）：890 秒 → 14.84 分钟
+	// 运动时长按分钟落库（新版给的是秒）：1234.5 秒 → 20.58 分钟
 	var durationMin float64
 	if err := e.db.Pool.QueryRow(e.ctx,
 		`SELECT duration_min FROM workouts WHERE name='户外 步行'`).Scan(&durationMin); err != nil {
 		t.Fatal(err)
 	}
-	if durationMin < 14.84 || durationMin > 14.85 {
-		t.Fatalf("运动时长应为约 14.84 分钟（秒未换算会得到 890），实际 %v", durationMin)
+	if durationMin < 20.57 || durationMin > 20.58 {
+		t.Fatalf("运动时长应为约 20.58 分钟（秒未换算会得到 1234），实际 %v", durationMin)
 	}
 
 	// 距离字段换了名字也必须有值
@@ -880,8 +880,8 @@ func TestIngestNewExportShapeIsNotBadRequest(t *testing.T) {
 		`SELECT total_distance FROM workouts WHERE name='户外 步行'`).Scan(&distance); err != nil {
 		t.Fatal(err)
 	}
-	if distance == nil || *distance < 0.96 || *distance > 0.97 {
-		t.Fatalf("运动距离应有值（约 0.963 km），实际 %v", distance)
+	if distance == nil || *distance < 1.85 || *distance > 1.86 {
+		t.Fatalf("运动距离应有值（约 1.8525 km），实际 %v", distance)
 	}
 }
 
@@ -930,7 +930,7 @@ func TestIngestECGRecordsAndWaveform(t *testing.T) {
 	if code != "sinus_rhythm" {
 		t.Fatalf("本地化判定应收敛成稳定码 sinus_rhythm，实际 %q", code)
 	}
-	if avgHR != 78 || fs != 512 || n != 5 {
+	if avgHR != 66 || fs != 512 || n != 5 {
 		t.Fatalf("心率/采样率/点数错误: %v %d %d", avgHR, fs, n)
 	}
 
@@ -946,7 +946,7 @@ func TestIngestECGRecordsAndWaveform(t *testing.T) {
 		t.Fatalf("波形应有 5 点，实际 %d", len(voltages))
 	}
 	// 浮点必须原样往返，任何按 float32 落库的实现都会在这里露馅
-	if voltages[0] != -27.408340454101562 || voltages[4] != 898.75146484375 {
+	if voltages[0] != -63.284713745117188 || voltages[4] != 407.3128662109375 {
 		t.Fatalf("电压值被截断: %v ~ %v", voltages[0], voltages[4])
 	}
 

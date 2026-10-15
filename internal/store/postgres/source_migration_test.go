@@ -14,8 +14,8 @@ const sourceMigrationVersion = "0007_source_normalize.sql"
 
 // 真实导出里的形态：来源名用的是 NBSP 而非普通空格。
 const (
-	dirtySource = "子翼的Apple\u00a0Watch"
-	cleanSource = "子翼的Apple Watch"
+	dirtySource = "小明的Apple\u00a0Watch"
+	cleanSource = "小明的Apple Watch"
 )
 
 // historicalRowsHaveDirtySource 检查表里是否还有没归一干净的来源名。
@@ -250,25 +250,25 @@ func TestSourceNormalizeMatchesGoCleanSource(t *testing.T) {
 
 	cases := []string{
 		"",
-		"子翼的Apple\u00a0Watch",
-		"子翼的Apple Watch",
-		"子翼的Apple\u3000Watch",
-		"子翼的Apple\u2009Watch",
-		"子翼的Apple\u202fWatch",
-		"子翼的Apple\u2007Watch",
+		"小明的Apple\u00a0Watch",
+		"小明的Apple Watch",
+		"小明的Apple\u3000Watch",
+		"小明的Apple\u2009Watch",
+		"小明的Apple\u202fWatch",
+		"小明的Apple\u2007Watch",
 		"Apple\t\nWatch",
 		"Apple   Watch",
 		"  Apple Watch  ",
-		"\u00a0子翼的 \t Apple\u3000Watch\u00a0",
+		"\u00a0小明的 \t Apple\u3000Watch\u00a0",
 		"Apple\u200bWatch",
 		"Apple\u200dWatch",
 		"Apple\u200cWatch",
 		"Apple\u2060Watch",
 		"\ufeffApple Watch",
 		"Apple \u200b Watch",
-		"子翼的Apple Watch|子翼的iPhone",
-		"子翼的Apple Watch |子翼的iPhone",
-		"血氧\u00a0| 子翼的Apple\u00a0Watch",
+		"小明的Apple Watch|小明的iPhone",
+		"小明的Apple Watch |小明的iPhone",
+		"血氧\u00a0| 小明的Apple\u00a0Watch",
 		"a||b",
 		"|a|",
 		"\u00a0\u3000",
@@ -276,7 +276,7 @@ func TestSourceNormalizeMatchesGoCleanSource(t *testing.T) {
 		"apple watch",
 		"某某健康App（备用）",
 		"移动心电图房颤提示软件",
-		"子翼的iPhone",
+		"小明的iPhone",
 	}
 	for _, in := range cases {
 		var got string

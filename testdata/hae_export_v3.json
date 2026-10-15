@@ -5,21 +5,21 @@
         "name": "step_count",
         "units": "count",
         "data": [
-          { "date": "2026-10-13 21:00:00 +0800", "qty": 2318, "source": "子翼的Apple\u00a0Watch|子翼的iPhone" }
+          { "date": "2026-10-13 21:00:00 +0800", "qty": 4321, "source": "小明的Apple\u00a0Watch|小明的iPhone" }
         ]
       },
       {
         "name": "active_energy",
         "units": "kJ",
         "data": [
-          { "date": "2026-10-13 00:00:00 +0800", "qty": 1090.860848, "source": "子翼的Apple\u00a0Watch" }
+          { "date": "2026-10-13 00:00:00 +0800", "qty": 1255.2, "source": "小明的Apple\u00a0Watch" }
         ]
       },
       {
         "name": "basal_energy_burned",
         "units": "kJ",
         "data": [
-          { "date": "2026-10-13 00:00:00 +0800", "qty": 7885.5496910674565, "source": "子翼的Apple\u00a0Watch" }
+          { "date": "2026-10-13 00:00:00 +0800", "qty": 8786.4, "source": "小明的Apple\u00a0Watch" }
         ]
       },
       {
@@ -28,10 +28,10 @@
         "data": [
           {
             "date": "2026-10-13 00:00:00 +0800",
-            "Avg": 80.07711823265892,
-            "Min": 52,
-            "Max": 130,
-            "source": "子翼的Apple\u00a0Watch"
+            "Avg": 72.41860465116279,
+            "Min": 55,
+            "Max": 128,
+            "source": "小明的Apple\u00a0Watch"
           }
         ]
       },
@@ -39,7 +39,7 @@
         "name": "body_mass",
         "units": "lb",
         "data": [
-          { "date": "2026-10-13 07:30:00 +0800", "qty": 150, "source": "子翼的iPhone" }
+          { "date": "2026-10-13 07:30:00 +0800", "qty": 150, "source": "小明的iPhone" }
         ]
       },
       {
@@ -59,7 +59,7 @@
             "inBedEnd": "2026-10-13 07:20:00 +0800",
             "sleepStart": "2026-10-12 23:30:00 +0800",
             "sleepEnd": "2026-10-13 07:10:00 +0800",
-            "source": "子翼的Apple\u00a0Watch"
+            "source": "小明的Apple\u00a0Watch"
           }
         ]
       }
@@ -67,25 +67,25 @@
     "workouts": [
       {
         "name": "户外 步行",
-        "start": "2026-10-14 12:30:37 +0800",
-        "end": "2026-10-14 12:45:28 +0800",
-        "duration": 890.4655394554138,
+        "start": "2026-10-14 09:12:30 +0800",
+        "end": "2026-10-14 09:33:05 +0800",
+        "duration": 1234.5,
         "source": {
-          "name": "子翼的Apple\u00a0Watch",
-          "identifier": "com.apple.health.74AAE5AF-0A6E-4147-9B5C-662D05E7A9E5"
+          "name": "小明的Apple\u00a0Watch",
+          "identifier": "com.apple.health.00000000-0000-4000-8000-000000000001"
         },
-        "totalEnergy": { "qty": 316.9891202958506, "units": "kJ" },
-        "distance": { "qty": 0.9632032549719515, "units": "km" },
-        "activeEnergyBurned": { "qty": 197.33744937694033, "units": "kJ" },
+        "totalEnergy": { "qty": 502.08, "units": "kJ" },
+        "distance": { "qty": 1.8525, "units": "km" },
+        "activeEnergyBurned": { "qty": 334.72, "units": "kJ" },
         "location": "户外",
         "isIndoor": false,
         "heartRate": {
-          "min": { "qty": 100, "units": "bpm" },
-          "max": { "qty": 121, "units": "bpm" },
-          "avg": { "qty": 109.40714285714286, "units": "bpm" }
+          "min": { "qty": 92, "units": "bpm" },
+          "max": { "qty": 138, "units": "bpm" },
+          "avg": { "qty": 118.5, "units": "bpm" }
         },
         "walkingAndRunningDistance": [
-          { "qty": 0.020246102609126744, "units": "km", "date": "2026-10-14 12:30:00 +0800" }
+          { "qty": 0.031, "units": "km", "date": "2026-10-14 09:12:00 +0800" }
         ],
         "metadata": {}
       },
@@ -101,10 +101,10 @@
     ],
     "ecg": [
       {
-        "start": "2026-10-13 23:16:15 +0800",
-        "end": "2026-10-13 23:16:45 +0800",
+        "start": "2026-10-13 09:16:15 +0800",
+        "end": "2026-10-13 09:16:45 +0800",
         "classification": "窦性心律",
-        "averageHeartRate": 78,
+        "averageHeartRate": 66,
         "numberOfVoltageMeasurements": 5,
         "samplingFrequency": 512,
         "source": {
@@ -112,11 +112,11 @@
           "identifier": "com.apple.health.ecg"
         },
         "voltageMeasurements": [
-          { "date": 1791904575.806009, "voltage": -27.408340454101562, "units": "mcV" },
-          { "date": 1791904575.8079622, "voltage": -1.1310367584228516, "units": "mcV" },
-          { "date": 1791904575.8099153, "voltage": 22.79483985900879, "units": "mcV" },
-          { "date": 1791904575.8118684, "voltage": 43.87456512451172, "units": "mcV" },
-          { "date": 1791904575.8138216, "voltage": 898.75146484375, "units": "mcV" }
+          { "date": 1791882975.100000, "voltage": -63.284713745117188, "units": "mcV" },
+          { "date": 1791882975.1019531, "voltage": -14.61724853515625, "units": "mcV" },
+          { "date": 1791882975.1039062, "voltage": 82.334121704101562, "units": "mcV" },
+          { "date": 1791882975.1058593, "voltage": 66.4210205078125, "units": "mcV" },
+          { "date": 1791882975.1078124, "voltage": 407.3128662109375, "units": "mcV" }
         ]
       }
     ]

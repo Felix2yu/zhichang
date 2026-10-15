@@ -56,8 +56,8 @@ func TestIngestV3UnitsLandInDB(t *testing.T) {
 		`SELECT value, unit FROM samples WHERE metric='active_energy'`).Scan(&value, &unit); err != nil {
 		t.Fatal(err)
 	}
-	if math.Abs(value-260.722) > 1e-6 || unit != "kcal" {
-		t.Fatalf("活动能量应换算成 260.722 kcal，实际 %v %s", value, unit)
+	if math.Abs(value-300.0) > 1e-6 || unit != "kcal" {
+		t.Fatalf("活动能量应换算成 300.0 kcal，实际 %v %s", value, unit)
 	}
 
 	// 聚合层：跑完队列后天级值必须是 kcal 口径，且字典声明的展示单位与之一致
@@ -72,10 +72,10 @@ func TestIngestV3UnitsLandInDB(t *testing.T) {
 		}
 	}
 	for m, want := range map[string]float64{
-		"active_energy":       260.722,
-		"basal_energy_burned": 1884.6916087637323,
+		"active_energy":       300.0,
+		"basal_energy_burned": 2100.0,
 		"body_mass":           68.0388555,
-		"heart_rate":          80.07711823265892,
+		"heart_rate":          72.41860465116279,
 	} {
 		var got float64
 		if err := db.Pool.QueryRow(ctx,
@@ -106,16 +106,16 @@ func TestIngestV3UnitsLandInDB(t *testing.T) {
 			continue
 		}
 		newShape = true
-		if math.Abs(r.DurationMin-14.841092324256897) > 1e-6 {
+		if math.Abs(r.DurationMin-20.575) > 1e-6 {
 			t.Fatalf("新版运动时长应为 14.841 分钟，实际 %v", r.DurationMin)
 		}
-		if r.TotalDistance == nil || math.Abs(*r.TotalDistance-0.9632032549719515) > 1e-9 || r.DistanceUnit != "km" {
+		if r.TotalDistance == nil || math.Abs(*r.TotalDistance-1.8525) > 1e-9 || r.DistanceUnit != "km" {
 			t.Fatalf("新版运动距离错误: %v %q", r.TotalDistance, r.DistanceUnit)
 		}
-		if r.TotalEnergy == nil || math.Abs(*r.TotalEnergy-75.76221804394135) > 1e-6 || r.EnergyUnit != "kcal" {
+		if r.TotalEnergy == nil || math.Abs(*r.TotalEnergy-120.0) > 1e-6 || r.EnergyUnit != "kcal" {
 			t.Fatalf("新版运动能耗错误: %v %q", r.TotalEnergy, r.EnergyUnit)
 		}
-		if r.Source != "子翼的Apple Watch" {
+		if r.Source != "小明的Apple Watch" {
 			t.Fatalf("对象来源未取到 name（且应归一空白）: %q", r.Source)
 		}
 		oldShape = true
