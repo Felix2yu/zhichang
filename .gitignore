@@ -18,3 +18,7 @@ web/.env.*
 .DS_Store
 .env
 coverage.out
+
+# AI 编辑器/助手本地目录
+.workbuddy/
+.trae/
