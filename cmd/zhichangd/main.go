@@ -5,6 +5,7 @@
 //	zhichangd migrate        # 执行数据库迁移
 //	zhichangd seed-metrics   # 补齐内置指标字典
 //	zhichangd doctor         # 检查数据库与数据状态
+//	zhichangd import-routes  # 导入本机 GPX 运动轨迹（只读本地文件、只写本地库）
 //	zhichangd mcp            # 以 stdio 方式提供 MCP 服务（本地 AI 客户端用）
 //	zhichangd version        # 打印版本
 package main
@@ -45,10 +46,12 @@ const usage = `知常 —— 自托管健康数据平台
   zhichangd migrate          执行数据库迁移
   zhichangd seed-metrics     补齐内置指标字典
   zhichangd doctor           检查数据库与数据状态
+  zhichangd import-routes <目录>   导入本机 GPX 运动轨迹（可加 -dry-run 只看匹配报告）
   zhichangd mcp              以 stdio 方式提供 MCP 服务
   zhichangd version          打印版本
 
 运维子命令支持 -dsn 覆盖 ZHICHANG_DB_DSN；其余配置全部来自环境变量。
+轨迹只由本机命令写入：接入端点不收逐点经纬度，位置数据不出机器。
 `
 
 func main() {
@@ -70,6 +73,8 @@ func main() {
 		exitOn(cli.Migrate(args))
 	case "doctor":
 		exitOn(cli.Doctor(args))
+	case "import-routes":
+		exitOn(cli.ImportRoutes(args))
 	case "seed-metrics":
 		exitOn(cli.SeedMetrics(args))
 	case "mcp":

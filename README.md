@@ -73,6 +73,20 @@ chunk 裁剪、压缩策略那类分区行为不在覆盖范围内（它们本�
 
 MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、不保留、无重放，丢消息不可知，**不建议作为唯一通道**。
 
+### 运动轨迹（GPX）
+
+HAE 的 REST 自动化只发 JSON，逐点经纬度不在同步范围内——位置数据比任何生理指标都更直接地暴露「人在哪里」，
+所以接入端点**故意不收轨迹**。导出目录里的 `.gpx` 由本机命令导入，只读本地文件、只写本地库：
+
+```bash
+zhichangd import-routes <GPX 目录>      # 加 -dry-run 只看匹配报告，不写库
+```
+
+按「运动名 + 文件名里的本地钟点」对上 `workouts` 的起点（钟点比较在 SQL 里做，先 `AT TIME ZONE 'UTC'`
+再加记录自带偏移，避免跟着数据库会话时区漂）；对不上或一对多的只报告不猜——挂错一次运动，
+等于把一段行踪记到另一天头上，界面上完全看不出来。按文件内容指纹幂等，可以放心反复跑。
+实测 109 个文件 / 30.7 万点 → 8MB，二次运行 0 写入、109 条判定为未变。
+
 ## 关键处理规则
 
 | 主题 | 口径 |
@@ -83,6 +97,7 @@ MQTT 仅作旁路（`ZHICHANG_MQTT_ENABLED=true`）：HAE 的 MQTT 是 QoS 0、�
 | 日内聚合 | 步数/能量/距离等累计量 `sum()`；心率/体重/HRV 等瞬时量 `mean()`；身高、VO2max 取当日 `last`<br>**睡眠是唯一不产生 samples 却有天级值的指标**：会话形态的睡眠只落 `sleep_sessions`，聚合时单独从那张表取（同来源多段求和、跨来源取最大，与其它累计量同一套规则）。不接这一条的话 `daily_metrics_day` 里永远没有 `sleep_analysis`，趋势页的睡眠卡片显示「暂无数据」而睡眠页明明列着几百晚，概览的基线/偏离、相关性、MCP 的 `health_query` 也全都取不到睡眠，且全程不报错 |
 | 单位 | **入库时按字典 `metric_defs.unit` 换算**（能量 kJ→kcal、距离 m/mi→km、体重 lb→kg），值与单位一起改；不可换算的标签差异（`count/min` 与 `bpm`、`ml/(kg·min)` 与 `mL/min·kg`）不动。展示单位一律取字典的 `preferred_unit`，因此库里的值必须已经是字典口径——否则会出现「1255 kJ 标成 1255 kcal」这类虚高 4.18 倍且界面上看不出错的数值 |
 | 运动记录 | 时长一律存分钟（`duration_min`），距离统一 km、能耗统一 kcal。HAE 老版本 `duration` 给分钟、新版本给秒且无单位标记，按「隐含时长更接近 `end-start`」判定；距离字段新版叫 `distance`、老版叫 `totalDistance`，取有值的那个 |
+| 运动轨迹 | 与 `workouts` 分表（`workout_routes`）：一条轨迹实测两万多个点（约 80KB），列表查询不该把折线一起拉出来——理由与心电波形分表相同，TOAST 只是不让大字段进缓存，不是隔离。<br>折线存四个平行数组（`lats/lons/eles/at_secs`）而不是逐点行：30 万行纯坐标读一次还要排序，数组在 pgx 里是原生支持、也能在 psql 里切片核对。**不存逐点绝对时间戳**：时轴 = `start_time + at_secs[i]`，与心电同一取舍（上游逐点时间的形态在版本间变过，存下来会让时轴有两个可能互相矛盾的来源）；代价是**任一点缺时间就整条不入库**，按索引推时轴的前提是点数完整<br>`(0,0)` 坐标的点直接丢弃：那不是「赤道与本初子午线的交点」，而是上游没给坐标，留着会把 bbox 与折线同时画错 |
 | 上游字段容错 | 解析层对 `source`（字符串或 `{name, identifier}` 对象）与数量字段（对象/裸数值/数组）一律容错，认不出按缺失处理——**绝不允许单个字段的形态变化导致整份导出 400**。HAE 换过 `workouts[].source` 的形态，按字符串解析会让 34 个指标一条都入不了库 |
 | 指标别名 | 同一概念的上游多种写法在**入库时收敛到字典的规范名**：`blood_oxygen_saturation`→`oxygen_saturation`、`apple_exercise_time`→`exercise_time`、`apple_stand_time`→`stand_time`、`apple_stand_hour`→`stand_hour`、`distance_walking_running`→`walking_running_distance`、`weight_&_body_mass`/`weight_body_mass`→`body_mass`、`apple_sleeping_wrist_temperature`→`sleeping_wrist_temperature`。别名表是 `internal/domain/metric/alias.go` 的 `aliases`（唯一事实来源）<br>不收敛的后果是**双向失效**：数据躺在旧名下、字典里的卡片永远空图，界面上既看不到数值也看不出哪里错了。语义不同的指标绝不合并（`apple_stand_time` 是站立分钟数、`apple_stand_hour` 是站立小时数）<br>历史行由 `migrations/0004_metric_aliases.sql` 一次性搬到规范名下（撞唯一约束时删旧留新），并删除字典里的旧条目——留着会让趋势页出现两个同名 chip，其中一个永远无数据。别名表与迁移表的一致性由 `alias_migration_test.go` 锁定 |
 | 来源名 | 上游写的来源名用的是 **NBSP**（U+00A0）而不是普通空格——实测真实导出里 249 个点位全是同一台手表（示例名「小明的Apple\u00a0Watch」，真实设备名已脱敏）；多来源还会被拼成一个串（`小明的Apple Watch\|小明的iPhone`），且管两侧的空格不固定。解析出口由 `sample.CleanSource` 统一归一：非 U+0020 的空白（NBSP / 表意空格 / 各种窄空格 / 制表换行）收成普通空格、零宽字符（U+200B/200C/200D/2060/FEFF）直接删掉、连续空白压缩、`\|` 两侧统一成一个空格<br>**只做空白等价替换**：不折叠大小写、不删标点、不猜语义、不拆分多来源——设备名是人写的，任何「聪明」的改写都可能把两台真不同的设备合并成一台<br>不归一的后果不是「看着别扭」：`sources` 表会多出一行肉眼一模一样的来源把样本数劈成两半，去重唯一索引 `(start_time, metric, source, value)` 也会因为 `source` 不同而把同一份数据入两遍<br>历史行由 `migrations/0007_source_normalize.sql` 一次性搬迁（撞唯一约束时删旧留新），受影响的日期排进重算队列重建天级聚合；两份归一的等价性由 `source_migration_test.go` 在真库上逐用例比对锁定 |
