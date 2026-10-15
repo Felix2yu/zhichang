@@ -19,7 +19,7 @@ func TestConvertUnit(t *testing.T) {
 	}{
 		{
 			name: "活动能量 kJ 换成 kcal", value: 1255.2, from: "kJ", to: "kcal",
-			wantValue: 1090.86 / 4.184, wantUnit: "kcal",
+			wantValue: 1255.2 / 4.184, wantUnit: "kcal",
 			reason: "HAE 新版本给 kJ，字典声明 kcal；不换算会让「1255 kcal」虚高 4.18 倍",
 		},
 		{

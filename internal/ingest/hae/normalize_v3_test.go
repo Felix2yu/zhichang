@@ -134,7 +134,7 @@ func TestWorkoutDurationMinUnitDetection(t *testing.T) {
 		want   float64
 		reason string
 	}{
-		{"新版按秒给（890.47 秒对 891 秒跨度）", 1234.5, 891 * time.Second, 20.575,
+		{"新版按秒给（890.47 秒对 891 秒跨度）", 1234.5, 1235 * time.Second, 20.575,
 			"隐含秒数几乎等于跨度，判为秒"},
 		{"旧版按分钟给（30 对 30 分钟跨度）", 30, 30 * time.Minute, 30,
 			"隐含秒数（1800）等于跨度，判为分钟"},

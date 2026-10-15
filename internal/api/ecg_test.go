@@ -48,7 +48,7 @@ func TestECGListContract(t *testing.T) {
 	runID := newRun(t, db)
 
 	withWave := ecgRec(dateInLoc(0), 23, 16, "窦性心律")
-	withWave.Voltages = []float64{-27.4, 0, 43.875}
+	withWave.Voltages = []float64{-63.28, 0, 66.42}
 	withWave.VoltageCount = len(withWave.Voltages)
 
 	bare := ecgRec(dateInLoc(-3), 22, 45, "Sinus Rhythm") // 英文原文，归一到同一个码
