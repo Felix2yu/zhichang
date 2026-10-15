@@ -133,7 +133,12 @@ func TestParseDateRejectedByEveryQuery(t *testing.T) {
 			_, e := db.SleepNightMetrics(ctx, f, t2, nil)
 			return e
 		}},
+		{"Baseline", func(f, _ string) error { _, e := db.Baseline(ctx, []string{"step_count"}, f, 30); return e }},
+		{"Insights", func(f, _ string) error { _, e := db.Insights(ctx, []string{"step_count"}, f, 30, 6); return e }},
+		{"CoverageOf", func(f, _ string) error { _, e := db.CoverageOf(ctx, f, 30); return e }},
 	}
+	// 这几个只有单个日期参数，不存在「结束日期」要验
+	singleDate := map[string]bool{"Summary": true, "SleepStages": true, "Baseline": true, "Insights": true, "CoverageOf": true}
 	for _, c := range cases {
 		for _, s := range bad {
 			if err := c.call(s, "2026-10-01"); err == nil {
@@ -141,8 +146,8 @@ func TestParseDateRejectedByEveryQuery(t *testing.T) {
 			} else if !strings.Contains(err.Error(), "日期格式应为 YYYY-MM-DD") {
 				t.Fatalf("%s 的报错口径不对: %v", c.name, err)
 			}
-			if c.name == "Summary" || c.name == "SleepStages" {
-				continue // 这两个只有单个日期参数
+			if singleDate[c.name] {
+				continue
 			}
 			if err := c.call("2026-10-01", s); err == nil {
 				t.Fatalf("%s 接受非法结束日期 %q", c.name, s)

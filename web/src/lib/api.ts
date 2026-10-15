@@ -33,6 +33,58 @@ export type SummaryItem = {
 	updated_at?: string;
 };
 
+/**
+ * 「今日 vs 我的常态」的一行：常态是对比日之前窗口内的中位数。
+ * 今日没数据时服务端回落到最后有数据的那天，并把 stale 置真。
+ */
+export type BaselineItem = {
+	metric: string;
+	/** 对比值所在日期；窗口内完全没有数据时为空串 */
+	date: string;
+	value: number | null;
+	prev_value: number | null;
+	/** 常态（窗口内中位数）；样本不足时为 null */
+	baseline: number | null;
+	/** 相对常态的偏离百分比；常态缺失或为 0 时为 null */
+	deviation_pct: number | null;
+	/** 参与常态计算的天数 */
+	sample_days: number;
+	window_days: number;
+	/** 截至对比日的最后若干个有数据的点（日期升序），用于迷你走势 */
+	recent: { date: string; value: number }[];
+	stale: boolean;
+};
+
+/** 一条「值得关注」：偏离常态到值得推给用户看的程度。 */
+export type InsightItem = {
+	metric: string;
+	/** outlier = 单点离群；streak = 连续若干天同向偏离 */
+	kind: 'outlier' | 'streak';
+	/** high / low：只说方向，不下「好 / 坏」结论 */
+	direction: 'high' | 'low';
+	date: string;
+	value: number;
+	baseline: number;
+	deviation_pct: number;
+	streak_days: number;
+};
+
+export type CoverageItem = {
+	metric: string;
+	/** 窗口内有数据的天数 */
+	days: number;
+	last_date: string;
+	/** 距窗口末端多少天；无数据时为 −1 */
+	days_since: number;
+};
+
+export type Coverage = {
+	from: string;
+	to: string;
+	window_days: number;
+	rows: CoverageItem[];
+};
+
 export type SleepRow = {
 	local_date: string;
 	source: string;
@@ -267,6 +319,23 @@ export const api = {
 		const series: Record<string, DailyPoint[]> = {};
 		for (const [k, v] of Object.entries(r.series ?? {})) series[k] = arr(v);
 		return { ...r, series };
+	},
+	baseline: async (metrics: string[], date: string, window = 30) => {
+		const r = await get<{ date: string; window: number; items: BaselineItem[] }>(
+			`/api/baseline?metrics=${encodeURIComponent(metrics.join(','))}&date=${date}&window=${window}`
+		);
+		const items = arr(r.items).map((i) => ({ ...i, recent: arr(i.recent) }));
+		return { ...r, items };
+	},
+	insights: async (metrics: string[], date: string, window = 30, limit = 6) => {
+		const r = await get<{ date: string; window: number; items: InsightItem[] }>(
+			`/api/insights?metrics=${encodeURIComponent(metrics.join(','))}&date=${date}&window=${window}&limit=${limit}`
+		);
+		return { ...r, items: arr(r.items) };
+	},
+	coverage: async (days = 30) => {
+		const r = await get<Coverage>(`/api/coverage?days=${days}`);
+		return { ...r, rows: arr(r.rows) };
 	},
 	sleep: async (from: string, to: string) => {
 		const r = await get<{ rows: SleepRow[] }>(`/api/sleep?from=${from}&to=${to}`);

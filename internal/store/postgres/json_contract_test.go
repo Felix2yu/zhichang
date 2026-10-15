@@ -39,6 +39,11 @@ func TestEmptyRowsEncodeAsArray(t *testing.T) {
 		{"NightMetricRow", map[string]any{"rows": []NightMetricRow{}}, `{"rows":[]}`},
 		{"SleepStagesRange", map[string]any{"rows": []NightStages{}}, `{"rows":[]}`},
 		{"Goals", map[string]any{"goals": []GoalRow{}}, `{"goals":[]}`},
+		// 概览页新增接口。BaselineItem 不在这里：它的 value / baseline 是可选标量，
+		// 为 null 是口径的一部分（「没有常态」与「常态是 0」是两回事），
+		// 数组字段 recent 的契约由 baseline_test.go 的 TestBaselineEmptyRowsStayJSONSafe 锁定。
+		{"Insights", map[string]any{"items": []InsightItem{}}, `{"items":[]}`},
+		{"Coverage", Coverage{Rows: []CoverageItem{}}, `{"from":"","to":"","window_days":0,"rows":[]}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
