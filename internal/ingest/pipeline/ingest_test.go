@@ -31,7 +31,7 @@ func openTestDB(t *testing.T) *postgres.DB {
 		t.Fatalf("字典写入失败: %v", err)
 	}
 	for _, q := range []string{
-		`TRUNCATE samples, workout_routes, workouts, sleep_sessions, ecg_records, ecg_voltages, ingest_runs, rollup_queue, sync_watermark, sources, daily_metrics, daily_metrics_day`,
+		`TRUNCATE samples, workout_series, workout_routes, workouts, sleep_sessions, ecg_records, ecg_voltages, ingest_runs, rollup_queue, sync_watermark, sources, daily_metrics, daily_metrics_day`,
 	} {
 		if _, err := db.Pool.Exec(ctx, q); err != nil {
 			t.Fatalf("清理失败: %v", err)

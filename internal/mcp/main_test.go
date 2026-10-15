@@ -67,7 +67,7 @@ func newDeps(t *testing.T) *Deps {
 	t.Helper()
 	db := sharedDB(t)
 	ctx := context.Background()
-	if _, err := db.Pool.Exec(ctx, `TRUNCATE samples, workout_routes, workouts, sleep_sessions, ecg_records, ecg_voltages, ingest_runs,
+	if _, err := db.Pool.Exec(ctx, `TRUNCATE samples, workout_series, workout_routes, workouts, sleep_sessions, ecg_records, ecg_voltages, ingest_runs,
 		sync_watermark, sources, daily_metrics, daily_metrics_day, rollup_queue`); err != nil {
 		t.Fatalf("清理失败: %v", err)
 	}
