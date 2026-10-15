@@ -179,7 +179,8 @@
 			.map((g) => {
 				const d = byName.get(g.metric);
 				let value = baseByMetric.get(g.metric)?.value ?? null;
-				// 睡眠总量走 sleep_sessions，不一定进天级聚合，所以要单独取一次
+				// 睡眠的天级值现在有了，但「今天」常常还没有：目标进度问的是刚过去的那一晚，
+				// 所以今天没有行时退回最近一晚，而不是让进度条空着。
 				if (value === null && g.metric === 'sleep_analysis' && latestSleep?.total_sleep_hr != null) {
 					value = latestSleep.total_sleep_hr;
 				}

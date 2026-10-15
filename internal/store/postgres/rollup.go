@@ -112,17 +112,37 @@ func (r *Rollup) Recompute(ctx context.Context, dates []string, metrics []string
 		known = append(known, m)
 	}
 
-	// 1) 每 (日期 × 指标 × 来源) 的中间量
-	if _, err := r.db.Pool.Exec(ctx, `DELETE FROM daily_metrics WHERE local_date = ANY($1) AND metric = ANY($2)`, d, known); err != nil {
-		return err
+	// 睡眠不产生 samples（会话形态只进 sleep_sessions），它的中间量单独从会话表取。
+	// 少了这一条，字典里的「睡眠时长」卡片会永远是空的，而睡眠页明明有几百晚数据——
+	// 两边看着都像坏了，但谁都没报错。
+	sampleMetrics := make([]string, 0, len(known))
+	sleepInBatch := false
+	for _, m := range known {
+		if m == SleepMetric {
+			sleepInBatch = true
+			continue
+		}
+		sampleMetrics = append(sampleMetrics, m)
 	}
-	if _, err := r.db.Pool.Exec(ctx, `INSERT INTO daily_metrics
-		(local_date, metric, source, sample_count, sum_value, mean_value, min_value, max_value, first_at, last_at)
-		SELECT local_date, metric, source, count(*), sum(value), avg(value), min(value), max(value), min(start_time), max(start_time)
-		FROM samples
-		WHERE local_date = ANY($1) AND metric = ANY($2)
-		GROUP BY local_date, metric, source`, d, known); err != nil {
-		return err
+
+	// 1) 每 (日期 × 指标 × 来源) 的中间量
+	if len(sampleMetrics) > 0 {
+		if _, err := r.db.Pool.Exec(ctx, `DELETE FROM daily_metrics WHERE local_date = ANY($1) AND metric = ANY($2)`, d, sampleMetrics); err != nil {
+			return err
+		}
+		if _, err := r.db.Pool.Exec(ctx, `INSERT INTO daily_metrics
+			(local_date, metric, source, sample_count, sum_value, mean_value, min_value, max_value, first_at, last_at)
+			SELECT local_date, metric, source, count(*), sum(value), avg(value), min(value), max(value), min(start_time), max(start_time)
+			FROM samples
+			WHERE local_date = ANY($1) AND metric = ANY($2)
+			GROUP BY local_date, metric, source`, d, sampleMetrics); err != nil {
+			return err
+		}
+	}
+	if sleepInBatch {
+		if err := r.recomputeSleepSources(ctx, d); err != nil {
+			return err
+		}
 	}
 
 	// 2) 按日内口径分组，收敛到每 (日期 × 指标)
@@ -156,6 +176,31 @@ func (r *Rollup) Recompute(ctx context.Context, dates []string, metrics []string
 		}
 	}
 	return nil
+}
+
+// SleepMetric 是唯一一个「不产生 samples 却有天级值」的指标：
+// 睡眠以会话形态入库，只落在 sleep_sessions。
+const SleepMetric = "sleep_analysis"
+
+// recomputeSleepSources 从睡眠会话表算每 (日期 × 来源) 的睡眠总量。
+//
+// 一晚归属到哪个日期由入库侧按「本夜」（18:00 分界）决定，所以一天里通常正好一晚；
+// 真出现分段睡眠或午睡 + 夜觉时，按累计量口径在同来源内求和。
+// 跨来源的收敛留给第二步（取各来源总量的 max），与步数/能量走同一套规则——
+// 手表报 7.6 小时、第三方 App 报 4.5 小时时，求和会得到一个谁都没睡出来的数。
+func (r *Rollup) recomputeSleepSources(ctx context.Context, d []pgtype.Date) error {
+	if _, err := r.db.Pool.Exec(ctx,
+		`DELETE FROM daily_metrics WHERE local_date = ANY($1) AND metric = $2`, d, SleepMetric); err != nil {
+		return err
+	}
+	_, err := r.db.Pool.Exec(ctx, `INSERT INTO daily_metrics
+		(local_date, metric, source, sample_count, sum_value, mean_value, min_value, max_value, first_at, last_at)
+		SELECT local_date, $2, source, count(*), sum(total_sleep_hr), avg(total_sleep_hr),
+			min(total_sleep_hr), max(total_sleep_hr), min(sleep_start), max(sleep_end)
+		FROM sleep_sessions
+		WHERE local_date = ANY($1) AND total_sleep_hr IS NOT NULL
+		GROUP BY local_date, source`, d, SleepMetric)
+	return err
 }
 
 // recomputeLast 处理“取当日最后一次测量”的指标（身高、VO2max 等）。
