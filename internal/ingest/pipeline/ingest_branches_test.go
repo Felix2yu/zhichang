@@ -410,13 +410,15 @@ func TestWatermarkAndRollupQueue(t *testing.T) {
 	}
 
 	// 重算队列：每个 (日期 × 指标) 一条，与字典里的 enabled 无关（未知指标也要重算）。
+	// 聚合睡眠不产生 samples，但它自己就是「睡眠时长」天级值的唯一来源，
+	// 所以按本夜（18:00 分界）排一条 sleep_analysis——不排的话趋势页会一直空着。
 	var pairs string
 	if err := db.Pool.QueryRow(ctx,
 		`SELECT string_agg(local_date::text || ':' || metric, ',' ORDER BY metric) FROM rollup_queue`).
 		Scan(&pairs); err != nil {
 		t.Fatal(err)
 	}
-	const wantPairs = "2026-10-13:body_mass,2026-10-13:environmental_audio_exposure,2026-10-13:heart_rate,2026-10-13:step_count"
+	const wantPairs = "2026-10-13:body_mass,2026-10-13:environmental_audio_exposure,2026-10-13:heart_rate,2026-10-12:sleep_analysis,2026-10-13:step_count"
 	if pairs != wantPairs {
 		t.Fatalf("rollup_queue 内容不符:\n 期望 %s\n 实际 %s", wantPairs, pairs)
 	}
@@ -432,21 +434,23 @@ func TestWatermarkAndRollupQueue(t *testing.T) {
 			t.Fatalf("旧数据把水位拉回了: %+v", r)
 		}
 	}
-	// 但那一天确实需要重算，所以队列里新增一条；同 (日期,指标) 再来一次不会重复入队。
-	if n := countRows(t, db, "rollup_queue"); n != 5 {
-		t.Fatalf("新增 2026-10-01 后队列应为 5 条，实际 %d", n)
+	// 但那一天确实需要重算，所以队列里新增一条（4 个样本指标 + 1 条睡眠 + 这个新日期 = 6）；
+	// 同 (日期,指标) 再来一次不会重复入队。
+	if n := countRows(t, db, "rollup_queue"); n != 6 {
+		t.Fatalf("新增 2026-10-01 后队列应为 6 条，实际 %d", n)
 	}
 	if _, err := svc.Ingest(ctx, older, postgres.RunMeta{Transport: "rest", AutomationID: auto}); err != nil {
 		t.Fatal(err)
 	}
-	if n := countRows(t, db, "rollup_queue"); n != 5 {
+	if n := countRows(t, db, "rollup_queue"); n != 6 {
 		t.Fatalf("重算队列必须幂等，实际 %d 条", n)
 	}
 }
 
 // TestNoAutomationIDSkipsWatermark 锁两个守卫分支：
 // 没有 automation-id（手机手动导出）不写水位；只有聚合睡眠（没有任何样本）也不写。
-// 这两种情况重算队列照常入队，否则手动导出后图表不会刷新。
+// 这两种情况重算队列照常入队，否则手动导出后图表不会刷新——
+// 聚合睡眠入的是自己那一行 sleep_analysis（它不产生样本，但它是睡眠时长天级值的唯一来源）。
 func TestNoAutomationIDSkipsWatermark(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -455,7 +459,7 @@ func TestNoAutomationIDSkipsWatermark(t *testing.T) {
 		wantQueue  int
 	}{
 		{"没有 automation-id", onePoint("step_count", "2026-10-13 08:00:00 +0800", 100, "iPhone"), "", 1},
-		{"只有聚合睡眠", aggregateSleepPayload, "auto-sleep-only", 0},
+		{"只有聚合睡眠", aggregateSleepPayload, "auto-sleep-only", 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -473,7 +477,8 @@ func TestNoAutomationIDSkipsWatermark(t *testing.T) {
 			}
 		})
 	}
-	// 聚合睡眠那一支还得真的落一条睡眠，否则「队列为 0」只是因为数据被丢了。
+	// 聚合睡眠那一支还得真的落一条睡眠，否则队列里那 1 条只是空转：
+	// 数据在解析第一步就被丢掉，聚合也无从算起，界面上只会显示「暂无数据」。
 	db, svc := service(t, "strict")
 	if _, err := svc.Ingest(context.Background(), mustParse(t, aggregateSleepPayload),
 		postgres.RunMeta{Transport: "rest", AutomationID: "auto-sleep-only"}); err != nil {
