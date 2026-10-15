@@ -25,7 +25,7 @@ func TestListMetrics(t *testing.T) {
 		{Metric: "retired_metric", DisplayNameZH: "已停用项", Kind: metric.KindInstant, DayAgg: metric.DayAggMean,
 			PreferredUnit: "x", Enabled: false, SortOrder: 5},
 	})
-	d := DepsFrom(db, reg, testLoc, testTZName)
+	d := DepsFrom(db, reg, testLoc, testTZName, false)
 
 	out := text(t, func() (string, error) { return d.ListMetrics(context.Background()) })
 	// 表头的「共 N 项」数的是全部登记项（含停用），而表格只列启用项：
@@ -848,7 +848,7 @@ func TestDBErrorPaths(t *testing.T) {
 func TestDepsFrom(t *testing.T) {
 	db := sharedDB(t)
 	reg := metric.New(metric.Defaults())
-	d := DepsFrom(db, reg, testLoc, testTZName)
+	d := DepsFrom(db, reg, testLoc, testTZName, false)
 	if d.DB != db || d.Metrics != reg || d.Location != testLoc || d.Timezone != testTZName {
 		t.Fatal("DepsFrom 没把依赖原样装进去")
 	}

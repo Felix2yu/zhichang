@@ -71,7 +71,7 @@ func newDeps(t *testing.T) *Deps {
 		sync_watermark, sources, daily_metrics, daily_metrics_day, rollup_queue`); err != nil {
 		t.Fatalf("清理失败: %v", err)
 	}
-	return DepsFrom(db, metric.New(metric.Defaults()), testLoc, testTZName)
+	return DepsFrom(db, metric.New(metric.Defaults()), testLoc, testTZName, false)
 }
 
 // day 与 Deps.today/shift 同源：断言里的边界日期必须跟着被测代码的「今天」走。

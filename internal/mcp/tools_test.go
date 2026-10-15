@@ -313,7 +313,7 @@ func TestRegistryFromDBFallsBackToDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := DepsFrom(db, reg, testLoc, testTZName)
+	d := DepsFrom(db, reg, testLoc, testTZName, false)
 	out := text(t, func() (string, error) { return d.ListMetrics(context.Background()) })
 	if !strings.Contains(out, "步数") {
 		t.Errorf("字典应能给出中文指标名（fromDB=%v）\n%s", fromDB, out)

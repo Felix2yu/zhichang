@@ -731,3 +731,39 @@ func TestIngestWithContextCancelled(t *testing.T) {
 		t.Fatal("取消的 ctx 下 execScript 必须报错")
 	}
 }
+
+// TestRunEventCountsRoundTrip 锁摄入审计里事件类的条数：
+// 运动/睡眠/心电都不产生样本，只记 sample_count 会让一次纯心电同步
+// 在概览上显示成「收到 0 条，入库 0」，看着像同步坏了。
+func TestRunEventCountsRoundTrip(t *testing.T) {
+	db := openIngestDB(t)
+	ctx := context.Background()
+
+	runID, dup, err := db.BeginRun(ctx, RunMeta{Transport: "rest", SessionID: "s-counts"})
+	if err != nil || dup {
+		t.Fatalf("BeginRun: %v dup=%v", err, dup)
+	}
+	want := IngestStats{Received: 7, Inserted: 5, Duplicates: 2, Workouts: 3, Sleep: 4, ECG: 6}
+	if err := db.FinishRun(ctx, runID, want, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.LoadRunStats(ctx, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Workouts != 3 || got.Sleep != 4 || got.ECG != 6 {
+		t.Fatalf("事件条数未随审计行落库: workouts=%d sleep=%d ecg=%d", got.Workouts, got.Sleep, got.ECG)
+	}
+	// 读出侧也要带上（同步页与概览都从这里取）
+	st, err := db.SyncStatusOf(ctx, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.RecentRuns) == 0 {
+		t.Fatal("同步记录为空")
+	}
+	r := st.RecentRuns[0]
+	if r.Workouts != 3 || r.Sleep != 4 || r.ECG != 6 {
+		t.Fatalf("同步状态未回报事件条数: %+v", r)
+	}
+}
