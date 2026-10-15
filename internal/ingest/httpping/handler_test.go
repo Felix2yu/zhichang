@@ -72,7 +72,7 @@ func newEnv(t *testing.T) *env {
 
 func truncateAll(t *testing.T, ctx context.Context, db *postgres.DB) {
 	t.Helper()
-	const q = `TRUNCATE samples, workouts, sleep_sessions, ecg_records, ecg_voltages, ingest_runs, rollup_queue, sync_watermark, sources, daily_metrics, daily_metrics_day`
+	const q = `TRUNCATE samples, workout_routes, workouts, sleep_sessions, ecg_records, ecg_voltages, ingest_runs, rollup_queue, sync_watermark, sources, daily_metrics, daily_metrics_day`
 	if _, err := db.Pool.Exec(ctx, q); err != nil {
 		t.Fatalf("清理失败: %v", err)
 	}
