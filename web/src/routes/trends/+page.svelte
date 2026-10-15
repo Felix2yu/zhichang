@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { api, shiftDays, todayStr, type DailyPoint, type MetricDef } from '#lib/api';
+	import { lastDays, spanDays, type Range } from '#lib/range';
 	import { METRIC_GROUPS, unitDigits, type MetricGroup } from '#lib/metric-groups';
 	import { prefs } from '#lib/prefs.svelte';
 	import {
@@ -19,7 +20,7 @@
 
 	let defs = $state<MetricDef[]>([]);
 	let selected = $state<string[]>(['step_count', 'heart_rate']);
-	let days = $state(prefs.rangeDays);
+	let range = $state<Range>(lastDays(prefs.rangeDays));
 	let series = $state<Record<string, DailyPoint[]>>({});
 	// 活跃度：按固定 90 天窗口单独评估，与页面时间范围无关（见 metric-activity.ts）。
 	let activity = $state<Record<string, ActivityStats>>({});
@@ -131,8 +132,7 @@
 		}
 		loading = true;
 		try {
-			const to = todayStr();
-			const res = await api.daily(selected, shiftDays(-days + 1, to), to);
+			const res = await api.daily(selected, range.from, range.to);
 			series = res.series;
 			error = '';
 		} catch (e) {
@@ -177,7 +177,7 @@
 	<!-- 工具条：标题 + 区间 -->
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
 		<h1 class="text-[15px] font-medium">趋势</h1>
-		<RangePicker value={days} onchange={(d) => ((days = d), load())} />
+		<RangePicker value={range} onchange={(r) => ((range = r), load())} />
 	</div>
 
 	{#if error}
@@ -275,7 +275,7 @@
 										staleStrong={isVeryStale(c.activity)}
 										class="h-full"
 										{loading}
-										{days}
+											days={spanDays(range)}
 									/>
 								</div>
 							{/each}

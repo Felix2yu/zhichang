@@ -47,17 +47,21 @@
 	import SleepScheduleChart from '#lib/components/SleepScheduleChart.svelte';
 	import SleepRhythmChart from '#lib/components/SleepRhythmChart.svelte';
 	import { formatDuration, formatDurationHours, prefs } from '#lib/prefs.svelte';
+	import { isDate, lastDays, spanDays, type Range } from '#lib/range';
 	import { dataColor } from '#lib/theme.svelte';
 
 	/** 评分要用你自己的历史做基准（时长 30 晚、就寝 13 晚），故额外多取一段前置窗口 */
 	const LEAD_IN_DAYS = 45;
 
-	let days = $state(prefs.rangeDays);
+	let range = $state<Range>(lastDays(prefs.rangeDays));
+	// 分桶粒度与「近 N 天」文案继续用天数，但它是区间的派生量而不是输入
+	let days = $derived(spanDays(range));
 	let allRows = $state<SleepRow[]>([]);
 	let loading = $state(true);
 	let error = $state('');
 
-	let from = $derived(shiftDays(-days + 1, todayStr()));
+	let from = $derived(range.from);
+	let to = $derived(range.to);
 	/** 展示范围：前置窗口只用来算基准，不进图表与表格 */
 	/** 范围内每一次睡眠会话：同一晚可能有多条（跨来源各报一条，或同日两次入睡） */
 	let sessions = $derived(allRows.filter((r) => r.local_date >= from));
@@ -274,8 +278,14 @@
 	/** URL 是这一屏的真相：?date= 看哪一晚、?days= 看多大范围，链接可直接分享 */
 	function readUrl() {
 		const q = page.url.searchParams;
-		const d = Number(q.get('days'));
-		if (d === 7 || d === 30 || d === 90 || d === 365) days = d;
+		// 新链接带 from/to；旧链接只有 ?days= 时仍然认（书签与分享出去的地址不该坏）
+		const f = q.get('from') ?? '';
+		const t = q.get('to') ?? '';
+		if (isDate(f) && isDate(t) && f <= t) range = { from: f, to: t };
+		else {
+			const d = Number(q.get('days'));
+			if (d === 7 || d === 30 || d === 90 || d === 365) range = lastDays(d);
+		}
 		const date = q.get('date');
 		if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) night = date;
 	}
@@ -286,11 +296,13 @@
 	$effect(() => {
 		if (!ready) return;
 		const q = page.url.searchParams;
-		if (q.get('date') === (night || null) && q.get('days') === String(days)) return;
+		if (q.get('date') === (night || null) && q.get('from') === range.from && q.get('to') === range.to) return;
 		const u = new URL(page.url.href);
 		if (night) u.searchParams.set('date', night);
 		else u.searchParams.delete('date');
-		u.searchParams.set('days', String(days));
+		u.searchParams.set('from', range.from);
+		u.searchParams.set('to', range.to);
+		u.searchParams.delete('days');
 		// shallow + replace：只改查询串，不触发导航、也不攒历史记录
 		void goto(`${u.pathname}${u.search}`, { replace: true, shallow: true });
 	});
@@ -430,11 +442,10 @@
 	async function load() {
 		loading = true;
 		try {
-			const to = todayStr();
 			// 多取一段前置窗口：评分基准要用到当前范围之前的历史
 			// 夜间指标只要展示范围，不需要前置基准，与图表同一区间才对得齐
 			const [sl, nm, stg, gl, st] = await Promise.all([
-				api.sleep(shiftDays(-(days + LEAD_IN_DAYS), to), to),
+				api.sleep(shiftDays(-LEAD_IN_DAYS, range.from), range.to),
 				api.sleepNightMetrics(from, to),
 				api.sleepStagesRange(from, to),
 				api.goals(),
@@ -468,7 +479,7 @@
 <div class="space-y-4">
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
 		<h1 class="text-[15px] font-medium">睡眠</h1>
-		<RangePicker value={days} onchange={(d) => ((days = d), load())} />
+		<RangePicker value={range} onchange={(r) => ((range = r), load())} />
 	</div>
 
 	{#if error}

@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, shiftDays, todayStr, type EcgRecord, type EcgWaveform } from '#lib/api';
+	import { api, type EcgRecord, type EcgWaveform } from '#lib/api';
+	import { lastDays, type Range } from '#lib/range';
 	import RangePicker from '#lib/components/RangePicker.svelte';
 	import EcgStripChart from '#lib/components/EcgStripChart.svelte';
 	import { prefs } from '#lib/prefs.svelte';
 
-	let days = $state(prefs.rangeDays);
+	let range = $state<Range>(lastDays(prefs.rangeDays));
 	let records = $state<EcgRecord[]>([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -36,8 +37,7 @@
 	async function load() {
 		loading = true;
 		try {
-			const to = todayStr();
-			const r = await api.ecg(shiftDays(-days + 1, to), to);
+			const r = await api.ecg(range.from, range.to);
 			records = r.records;
 			error = '';
 			await select(records[0] ?? null);
@@ -91,7 +91,7 @@
 <div class="space-y-4">
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
 		<h1 class="text-[15px] font-medium">心电图</h1>
-		<RangePicker value={days} onchange={(d) => ((days = d), load())} />
+		<RangePicker value={range} onchange={(r) => ((range = r), load())} />
 	</div>
 
 	{#if error}

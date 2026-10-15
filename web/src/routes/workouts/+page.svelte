@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, shiftDays, todayStr, type WorkoutRow } from '#lib/api';
+	import { api, type WorkoutRow } from '#lib/api';
+	import { lastDays, type Range } from '#lib/range';
 	import RangePicker from '#lib/components/RangePicker.svelte';
 	import { prefs, formatDuration } from '#lib/prefs.svelte';
 
-	let days = $state(prefs.rangeDays);
+	let range = $state<Range>(lastDays(prefs.rangeDays));
 	let rows = $state<WorkoutRow[]>([]);
 	let loading = $state(true);
 	let error = $state('');
@@ -46,8 +47,7 @@
 	async function load() {
 		loading = true;
 		try {
-			const to = todayStr();
-			rows = (await api.workouts(shiftDays(-days + 1, to), to)).rows;
+			rows = (await api.workouts(range.from, range.to)).rows;
 			error = '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -67,7 +67,7 @@
 <div class="space-y-4">
 	<div class="flex flex-wrap items-baseline justify-between gap-2">
 		<h1 class="text-[15px] font-medium">运动</h1>
-		<RangePicker value={days} onchange={(d) => ((days = d), load())} />
+		<RangePicker value={range} onchange={(r) => ((range = r), load())} />
 	</div>
 
 	{#if error}
