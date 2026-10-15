@@ -23,6 +23,10 @@ func TestClassify(t *testing.T) {
 		{"窦性心律", CodeSinusRhythm},
 		{"房颤", CodeAtrialFibrillation},
 		{"不确定", CodeInconclusive},
+		// iOS 简中把 Inconclusive 渲染成「未定论」，与「不确定」并存于不同系统版本
+		{"未定论", CodeInconclusive},
+		{"未定論", CodeInconclusive},
+		{"无法定论", CodeInconclusive},
 		{"记录欠佳", CodeInconclusivePoorRecording},
 		// 简中 IFU 把两侧并成一句，说不清是哪一侧，只能给笼统结论
 		{"低心率或高心率", CodeInconclusive},

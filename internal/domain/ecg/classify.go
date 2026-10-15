@@ -81,8 +81,11 @@ var (
 		"not detected", "no atrial fibrillation", "without atrial fibrillation",
 	}
 	// 上游明说「没法给结论」的各种措辞。
+	// 「未定论」是 iOS 简中对 Inconclusive 的实际渲染（实测一年导出里 3 条如此），
+	// 漏掉它的后果不是显示难看：那条记录落到 unknown，按判定统计时凭空消失。
 	inconclusiveMark = []string{
 		"无法判定", "無法判定", "判定不能", "不确定", "不明确", "不明確", "无法分类", "無法分類",
+		"未定论", "未定論", "无法定论", "無法定論", "结论待定", "結論待定",
 		"inconclusive", "undetermined", "unclassified",
 	}
 	// 上游连分类器都没认出来的措辞。
