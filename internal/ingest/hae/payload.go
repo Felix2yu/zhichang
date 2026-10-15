@@ -34,15 +34,15 @@ func (f *Float) UnmarshalJSON(b []byte) error {
 
 // SourceName 是来源名，兼容 HAE 的两种写法：
 //
-//	"子翼的 Apple Watch"                        —— 旧版导出（字符串）
-//	{"name":"子翼的 Apple Watch","identifier":…} —— 新版导出（对象）
+//	"小明的 Apple Watch"                        —— 旧版导出（字符串）
+//	{"name":"小明的 Apple Watch","identifier":…} —— 新版导出（对象）
 //
 // 新版把 workouts[].source 从字符串改成对象，若按 string 解析，encoding/json 会抛
 // UnmarshalTypeError 让**整份导出**解析失败（端点回 400，一个指标都入不了库）。
 // 因此这里一律解析成纯名字：认不出的形态按空串处理，绝不让一个字段拖垮整包。
 //
 // 解析出的名字统一过 sample.CleanSource：上游用的是 NBSP 而不是普通空格
-// （实测「子翼的Apple\u00a0Watch」），不清洗的话同一台设备会分裂成两个来源，
+// （实测「小明的Apple\u00a0Watch」），不清洗的话同一台设备会分裂成两个来源，
 // 去重唯一索引也会把同一份数据放行两遍。这里是所有来源的**唯一出口**——
 // 指标点、运动、睡眠、心电的 source 都从这里来，所以清洗只做一次就全覆盖。
 type SourceName string
