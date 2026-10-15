@@ -34,6 +34,9 @@ func (d *Dashboard) Register(r chi.Router) {
 	r.Get("/api/metrics", d.listMetrics)
 	r.Get("/api/summary", d.summary)
 	r.Get("/api/daily", d.daily)
+	r.Get("/api/baseline", d.baseline)
+	r.Get("/api/insights", d.insights)
+	r.Get("/api/coverage", d.coverage)
 	r.Get("/api/samples", d.samples)
 	r.Get("/api/sleep", d.sleep)
 	r.Get("/api/sleep/stages", d.sleepStages)
@@ -192,6 +195,73 @@ func (d *Dashboard) daily(w http.ResponseWriter, r *http.Request) {
 		"from": from, "to": to, "metrics": metrics, "timezone": d.tzName,
 		"series": groupByMetric(points, metrics),
 	})
+}
+
+// baseline 返回「最新值 vs 我的常态」：常态是对比日之前窗口内天级值的中位数。
+//
+// date 缺省取服务所在时区的今天；window 缺省 30 天。今天还没有数据时，
+// 对比日自动回落到最后有数据的那天，并把 stale 置为 true——前端据此标注
+// 「显示的是 X 月 X 日」，避免把三天前的数据当今天的看。
+func (d *Dashboard) baseline(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	metrics := d.resolveMetrics(q.Get("metrics"))
+	if len(metrics) == 0 {
+		WriteError(w, http.StatusBadRequest, "没有匹配的指标")
+		return
+	}
+	date := strings.TrimSpace(q.Get("date"))
+	if date == "" {
+		date = time.Now().In(d.loc).Format("2006-01-02")
+	}
+	window, _ := strconv.Atoi(q.Get("window"))
+	items, err := d.db.Baseline(r.Context(), metrics, date, window)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{
+		"date": date, "window": window, "timezone": d.tzName, "items": items,
+	})
+}
+
+// insights 返回偏离常态最明显的若干条提示。
+func (d *Dashboard) insights(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	metrics := d.resolveMetrics(q.Get("metrics"))
+	if len(metrics) == 0 {
+		WriteError(w, http.StatusBadRequest, "没有匹配的指标")
+		return
+	}
+	date := strings.TrimSpace(q.Get("date"))
+	if date == "" {
+		date = time.Now().In(d.loc).Format("2006-01-02")
+	}
+	window, _ := strconv.Atoi(q.Get("window"))
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	items, err := d.db.Insights(r.Context(), metrics, date, window, limit)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{
+		"date": date, "window": window, "timezone": d.tzName, "items": items,
+	})
+}
+
+// coverage 返回窗口内各指标的数据覆盖情况（有多少天有数据、最后更新于哪天）。
+func (d *Dashboard) coverage(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	date := strings.TrimSpace(q.Get("date"))
+	if date == "" {
+		date = time.Now().In(d.loc).Format("2006-01-02")
+	}
+	days, _ := strconv.Atoi(q.Get("days"))
+	cov, err := d.db.CoverageOf(r.Context(), date, days)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	WriteJSON(w, http.StatusOK, cov)
 }
 
 func (d *Dashboard) samples(w http.ResponseWriter, r *http.Request) {

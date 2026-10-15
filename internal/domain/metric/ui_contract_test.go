@@ -9,6 +9,9 @@ import (
 // metricGroupsPath 是趋势页的指标分组配置（前端）。
 const metricGroupsPath = "../../../web/src/lib/metric-groups.ts"
 
+// metricDirectionPath 是概览页的涨跌方向表（前端）。
+const metricDirectionPath = "../../../web/src/lib/metric-direction.ts"
+
 // TestDefaultsMetricsAreListedInTrendsUI 是字典与趋势页入口名单之间的一致性契约。
 //
 // 为什么需要这条测试：趋势页的选择器是
@@ -98,7 +101,41 @@ func TestDefaultsUnitsHaveDisplayDigits(t *testing.T) {
 	}
 }
 
-// 前端单位表里不该有字典根本不用的写法——那通常意味着单位被改过而另一边没跟上。
+// TestMetricDirectionKeysAreKnown 校验方向表与字典的一致性。
+//
+// 为什么需要这条：方向表里写错一个字母（stepcount 而不是 step_count），
+// 那个指标会静默掉进「中性」分支——卡片依然有数字、有百分比，只是永远不上色。
+// 这种错误在开发机上几乎不可能被发现（多数指标长期落在 normal 区间里不上色也很正常），
+// 等用户发现「步数涨了怎么没变绿」时，已经没人想过要去查这张表了。
+func TestMetricDirectionKeysAreKnown(t *testing.T) {
+	src, err := os.ReadFile(metricDirectionPath)
+	if err != nil {
+		t.Skipf("读不到前端方向表（%v），跳过跨语言校验", err)
+	}
+	inDict := map[string]bool{}
+	for _, d := range Defaults() {
+		inDict[d.Metric] = true
+	}
+
+	// 只认「整行就是一个带引号的指标名加逗号」，注释段里的 'up-good' 之类不会命中
+	re := regexp.MustCompile(`(?m)^\s*'([a-z][a-z0-9_]*)',$`)
+	seen := map[string]bool{}
+	for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+		name := m[1]
+		if seen[name] {
+			t.Errorf("方向表里 %q 重复登记（后写的会覆盖前面的）", name)
+		}
+		seen[name] = true
+		if !inDict[name] {
+			t.Errorf("方向表里的 %q 不在指标字典里（多半是笔误，会让该指标永远显示成中性色）", name)
+		}
+	}
+	if len(seen) == 0 {
+		t.Fatalf("没能从 %s 解析出任何指标名，解析规则需要更新", metricDirectionPath)
+	}
+}
+
+// TestDisplayDigitsHasNoStaleUnits 前端单位表里不该有字典根本不用的写法——那通常意味着单位被改过而另一边没跟上。
 func TestDisplayDigitsHasNoStaleUnits(t *testing.T) {
 	src, err := os.ReadFile(metricGroupsPath)
 	if err != nil {
