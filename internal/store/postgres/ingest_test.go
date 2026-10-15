@@ -19,7 +19,7 @@ func openIngestDB(t *testing.T) *DB {
 	t.Helper()
 	db := openRollupDB(t)
 	ctx := context.Background()
-	if _, err := db.Pool.Exec(ctx, `TRUNCATE ingest_runs, workouts, sleep_sessions, ecg_records, ecg_voltages, sources, sync_watermark`); err != nil {
+	if _, err := db.Pool.Exec(ctx, `TRUNCATE ingest_runs, workout_routes, workouts, sleep_sessions, ecg_records, ecg_voltages, sources, sync_watermark`); err != nil {
 		t.Fatalf("清理摄入表失败: %v", err)
 	}
 	return db
