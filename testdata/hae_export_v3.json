@@ -1,0 +1,124 @@
+{
+  "data": {
+    "metrics": [
+      {
+        "name": "step_count",
+        "units": "count",
+        "data": [
+          { "date": "2026-10-13 21:00:00 +0800", "qty": 4321, "source": "小明的Apple\u00a0Watch|小明的iPhone" }
+        ]
+      },
+      {
+        "name": "active_energy",
+        "units": "kJ",
+        "data": [
+          { "date": "2026-10-13 00:00:00 +0800", "qty": 1255.2, "source": "小明的Apple\u00a0Watch" }
+        ]
+      },
+      {
+        "name": "basal_energy_burned",
+        "units": "kJ",
+        "data": [
+          { "date": "2026-10-13 00:00:00 +0800", "qty": 8786.4, "source": "小明的Apple\u00a0Watch" }
+        ]
+      },
+      {
+        "name": "heart_rate",
+        "units": "count/min",
+        "data": [
+          {
+            "date": "2026-10-13 00:00:00 +0800",
+            "Avg": 72.41860465116279,
+            "Min": 55,
+            "Max": 128,
+            "source": "小明的Apple\u00a0Watch"
+          }
+        ]
+      },
+      {
+        "name": "body_mass",
+        "units": "lb",
+        "data": [
+          { "date": "2026-10-13 07:30:00 +0800", "qty": 150, "source": "小明的iPhone" }
+        ]
+      },
+      {
+        "name": "sleep_analysis",
+        "units": "hr",
+        "data": [
+          {
+            "date": "2026-10-13 00:00:00 +0800",
+            "totalSleep": 7.5,
+            "asleep": 7.1,
+            "core": 4.5,
+            "deep": 0.9,
+            "rem": 1.7,
+            "awake": 0.4,
+            "inBed": 8.0,
+            "inBedStart": "2026-10-12 23:20:00 +0800",
+            "inBedEnd": "2026-10-13 07:20:00 +0800",
+            "sleepStart": "2026-10-12 23:30:00 +0800",
+            "sleepEnd": "2026-10-13 07:10:00 +0800",
+            "source": "小明的Apple\u00a0Watch"
+          }
+        ]
+      }
+    ],
+    "workouts": [
+      {
+        "name": "户外 步行",
+        "start": "2026-10-14 09:12:30 +0800",
+        "end": "2026-10-14 09:33:05 +0800",
+        "duration": 1234.5,
+        "source": {
+          "name": "小明的Apple\u00a0Watch",
+          "identifier": "com.apple.health.00000000-0000-4000-8000-000000000001"
+        },
+        "totalEnergy": { "qty": 502.08, "units": "kJ" },
+        "distance": { "qty": 1.8525, "units": "km" },
+        "activeEnergyBurned": { "qty": 334.72, "units": "kJ" },
+        "location": "户外",
+        "isIndoor": false,
+        "heartRate": {
+          "min": { "qty": 92, "units": "bpm" },
+          "max": { "qty": 138, "units": "bpm" },
+          "avg": { "qty": 118.5, "units": "bpm" }
+        },
+        "walkingAndRunningDistance": [
+          { "qty": 0.031, "units": "km", "date": "2026-10-14 09:12:00 +0800" }
+        ],
+        "metadata": {}
+      },
+      {
+        "name": "Walking",
+        "start": "2026-10-13 08:00:00 +0800",
+        "end": "2026-10-13 08:30:00 +0800",
+        "duration": 30,
+        "totalEnergy": { "qty": 120, "units": "kcal" },
+        "totalDistance": { "qty": 2.4, "units": "km" },
+        "source": "Apple Watch"
+      }
+    ],
+    "ecg": [
+      {
+        "start": "2026-10-13 09:16:15 +0800",
+        "end": "2026-10-13 09:16:45 +0800",
+        "classification": "窦性心律",
+        "averageHeartRate": 66,
+        "numberOfVoltageMeasurements": 5,
+        "samplingFrequency": 512,
+        "source": {
+          "name": "移动心电图房颤提示软件",
+          "identifier": "com.apple.health.ecg"
+        },
+        "voltageMeasurements": [
+          { "date": 1791882975.100000, "voltage": -63.284713745117188, "units": "mcV" },
+          { "date": 1791882975.1019531, "voltage": -14.61724853515625, "units": "mcV" },
+          { "date": 1791882975.1039062, "voltage": 82.334121704101562, "units": "mcV" },
+          { "date": 1791882975.1058593, "voltage": 66.4210205078125, "units": "mcV" },
+          { "date": 1791882975.1078124, "voltage": 407.3128662109375, "units": "mcV" }
+        ]
+      }
+    ]
+  }
+}
