@@ -197,3 +197,7 @@ Service Worker 缓存名按构建版本变化并在 `activate` 阶段清旧。
 - 压缩策略默认 30 天后开启，压缩后的 chunk 不能写入；回填历史数据前需先解压对应区间。
 - 一期指标范围：健康指标 + 睡眠 + 运动 + 心电图；心率通知、心理状态、周期、症状、药物留待后续。
 - 明暗模式在应用内是全站生效的；但 PWA 的 `manifest.webmanifest` 只有一个 `background_color`，装到主屏后系统启动屏仍是浅色，要两态得发布两份 manifest。
+
+## 许可证
+
+本项目以 [MIT](LICENSE) 发布，© 2026 Felix2yu。
