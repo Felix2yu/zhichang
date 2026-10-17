@@ -20,83 +20,85 @@ const MAX_ENTRIES = 300;
 const SHELL = ['/'];
 
 self.addEventListener('install', (event) => {
-	event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(SHELL)));
-	self.skipWaiting();
+  event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(SHELL)));
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-	event.waitUntil(
-		caches.keys().then((keys) =>
-			Promise.all(
-				keys
-					.filter((k) => k.startsWith(`${CACHE_PREFIX}-`) && k !== CACHE_VERSION)
-					.map((k) => caches.delete(k))
-			)
-		)
-	);
-	self.clients.claim();
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((k) => k.startsWith(`${CACHE_PREFIX}-`) && k !== CACHE_VERSION)
+            .map((k) => caches.delete(k))
+        )
+      )
+  );
+  self.clients.claim();
 });
 
 self.addEventListener('message', (event) => {
-	if (event.data === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 /** 写缓存并裁剪到上限（FIFO）。 */
 async function putWithLimit(request, response) {
-	const cache = await caches.open(CACHE_VERSION);
-	await cache.put(request, response);
-	const keys = await cache.keys();
-	if (keys.length > MAX_ENTRIES) {
-		for (const k of keys.slice(0, keys.length - MAX_ENTRIES)) {
-			await cache.delete(k);
-		}
-	}
+  const cache = await caches.open(CACHE_VERSION);
+  await cache.put(request, response);
+  const keys = await cache.keys();
+  if (keys.length > MAX_ENTRIES) {
+    for (const k of keys.slice(0, keys.length - MAX_ENTRIES)) {
+      await cache.delete(k);
+    }
+  }
 }
 
 self.addEventListener('fetch', (event) => {
-	const { request } = event;
-	if (request.method !== 'GET') return;
+  const { request } = event;
+  if (request.method !== 'GET') return;
 
-	const url = new URL(request.url);
-	if (url.origin !== self.location.origin) return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
 
-	// 导航请求：network-first，离线时回落缓存，再回落壳页
-	if (request.mode === 'navigate') {
-		event.respondWith(
-			fetch(request)
-				.then((res) => {
-					if (res.ok) putWithLimit(request, res.clone());
-					return res;
-				})
-				// 离线兜底：单页应用的壳页就是 '/'，Go 侧对未知路径一律回落 index.html
-				.catch(async () => (await caches.match(request)) || caches.match('/'))
-		);
-		return;
-	}
+  // 导航请求：network-first，离线时回落缓存，再回落壳页
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          if (res.ok) putWithLimit(request, res.clone());
+          return res;
+        })
+        // 离线兜底：单页应用的壳页就是 '/'，Go 侧对未知路径一律回落 index.html
+        .catch(async () => (await caches.match(request)) || caches.match('/'))
+    );
+    return;
+  }
 
-	// API：network-first + 缓存回落 + 条目上限；失败返回错误而不是壳页，
-	// 避免 /api/** 被导航回落吞掉
-	if (url.pathname.startsWith('/api/')) {
-		event.respondWith(
-			fetch(request)
-				.then((res) => {
-					if (res.ok) putWithLimit(request, res.clone());
-					return res;
-				})
-				.catch(async () => (await caches.match(request)) || Response.error())
-		);
-		return;
-	}
+  // API：network-first + 缓存回落 + 条目上限；失败返回错误而不是壳页，
+  // 避免 /api/** 被导航回落吞掉
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          if (res.ok) putWithLimit(request, res.clone());
+          return res;
+        })
+        .catch(async () => (await caches.match(request)) || Response.error())
+    );
+    return;
+  }
 
-	// 静态资源（含 /_app/immutable 的哈希产物）：cache-first
-	event.respondWith(
-		caches.match(request).then(
-			(cached) =>
-				cached ||
-				fetch(request).then((res) => {
-					if (res.ok) putWithLimit(request, res.clone());
-					return res;
-				})
-		)
-	);
+  // 静态资源（含 /_app/immutable 的哈希产物）：cache-first
+  event.respondWith(
+    caches.match(request).then(
+      (cached) =>
+        cached ||
+        fetch(request).then((res) => {
+          if (res.ok) putWithLimit(request, res.clone());
+          return res;
+        })
+    )
+  );
 });
