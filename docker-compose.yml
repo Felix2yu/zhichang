@@ -19,7 +19,7 @@ services:
     image: ghcr.io/felix2yu/zhichang:latest
     # 本地从源码构建时改用下面这段（装配式镜像要求先 make docker 产出 bin/zhichangd）：
     # build:
-    #   context: ..
+    #   context: .
     #   dockerfile: Dockerfile
     container_name: zhichang
     restart: unless-stopped
