@@ -108,9 +108,7 @@ func (r *Rollup) Recompute(ctx context.Context, dates []string, metrics []string
 	}
 	d := toDateArray(dates)
 	known := make([]string, 0, len(metrics))
-	for _, m := range metrics {
-		known = append(known, m)
-	}
+	known = append(known, metrics...)
 
 	// 睡眠不产生 samples（会话形态只进 sleep_sessions），它的中间量单独从会话表取。
 	// 少了这一条，字典里的「睡眠时长」卡片会永远是空的，而睡眠页明明有几百晚数据——
