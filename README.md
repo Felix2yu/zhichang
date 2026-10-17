@@ -14,12 +14,12 @@
 ### Docker Compose（推荐）
 
 ```bash
-cp deploy/.env.example deploy/.env   # 设置 ZHICHANG_INGEST_TOKEN
-cd deploy && docker compose up -d
+cp .env.example .env   # 设置 ZHICHANG_INGEST_TOKEN
+docker compose up -d
 docker compose logs -f zhichang
 ```
 
-服务地址 `http://<host>:8787`，数据目录 `deploy/data`（payload 归档）与 TimescaleDB 卷。
+服务地址 `http://<host>:8787`，数据目录 `./data`（payload 归档）与 TimescaleDB 卷。
 
 镜像由 CI 发到 `ghcr.io/felix2yu/zhichang`（`latest` / `vX.Y.Z`，amd64 + arm64）。
 从源码构建请先 `make web build` 产出 `bin/zhichangd`，再 `make docker`——镜像是装配式的，

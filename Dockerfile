@@ -11,8 +11,8 @@ RUN apk add --no-cache ca-certificates su-exec tzdata \
 	&& mkdir -p /data && chown zhichang:zhichang /data
 
 COPY bin/zhichangd /usr/local/bin/zhichangd
-COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+# --chmod 把原来的 COPY + RUN chmod 合并成一层
+COPY --chmod=755 scripts/docker-entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV ZHICHANG_HTTP_ADDR=:8787 \
 	ZHICHANG_HOME_TZ=Asia/Shanghai \
