@@ -169,10 +169,6 @@ func TestUnauthorized(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := New(nil, tt.token, 0, "")
-			var opts []requestOpt
-			for k, v := range tt.header {
-				opts = append(opts, header(k, v))
-			}
 			r := httptest.NewRequest(http.MethodPost, "/api/ingest/hae", strings.NewReader(minPayload))
 			rec := httptest.NewRecorder()
 			h.handle(rec, r)

@@ -56,7 +56,7 @@ func TestWriteWorkoutsBackfillsDetail(t *testing.T) {
 	if gotAvg != 118.5 || gotMax != 138 || gotEffort != 3 {
 		t.Fatalf("心率/effort 未落库: %v %v %v", gotAvg, gotMax, gotEffort)
 	}
-	if gotMeta == nil || len(gotMeta) < 10 {
+	if len(gotMeta) < 10 {
 		t.Fatalf("meta 仍为空（此前该列自建表起恒 NULL）: %s", gotMeta)
 	}
 

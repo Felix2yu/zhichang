@@ -139,7 +139,10 @@ func serve() error {
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.Recoverer, middleware.RequestID, middleware.RealIP)
+	// 不用 middleware.RealIP：它取 X-Forwarded-For 最左跳并直接改写 RemoteAddr，
+	// 客户端可以随意伪造，已因 IP 欺骗被上游弃用。本服务没有任何代码读 RemoteAddr，
+	// 去掉它不改变行为，只消除欺骗面。
+	r.Use(middleware.Recoverer, middleware.RequestID)
 
 	svc := pipeline.New(db, registry, home, cfg.DedupMode)
 	ingest.New(svc, cfg.IngestToken, cfg.MaxBodyBytes, cfg.RawArchiveDir).Register(r)
