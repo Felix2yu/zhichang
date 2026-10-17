@@ -3,7 +3,7 @@ PNPM    ?= pnpm
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all web check build test cover vet migrate seed doctor run mcp docker clean
+.PHONY: all web check build test cover dev lint lint-strict fmt vet migrate seed doctor run mcp docker clean
 
 all: web build
 
@@ -34,6 +34,19 @@ cover:
 vet:
 	$(GO) vet ./...
 
+# 静态检查：gofmt 只列出未格式化文件（不写盘），前后端类型检查一并纳入
+lint:
+	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "未格式化："; echo "$$out"; exit 1; fi
+	$(GO) vet ./...
+	cd web && $(PNPM) run check
+
+# 深度检查：在 lint 之上加 golangci-lint（存量告警未清零前会红，故不并入 lint）
+lint-strict: lint
+	@if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run; else echo "  （未安装 golangci-lint，跳过）"; fi
+
+fmt:
+	gofmt -w $$(git ls-files '*.go')
+
 migrate:
 	$(GO) run ./cmd/zhichangd migrate
 
@@ -45,6 +58,9 @@ doctor:
 
 run: build
 	./bin/zhichangd
+
+# 本地开发：起服务（前端热更新另开终端 cd web && pnpm dev）
+dev: run
 
 mcp: build
 	./bin/zhichangd mcp
