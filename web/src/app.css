@@ -1,77 +1,77 @@
 @import 'tailwindcss';
 
 @theme {
-	--font-sans:
-		-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
-		'Helvetica Neue', Arial, sans-serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Helvetica Neue', Arial, sans-serif;
 
-	/* 结构色：页面唯一的颜色来源。暗黑模式靠下面一组同名变量整体翻转，
+  /* 结构色：页面唯一的颜色来源。暗黑模式靠下面一组同名变量整体翻转，
 	   所以业务代码只引用变量，不再写十六进制——写了就等于漏掉一个暗色场景。 */
-	--color-bg: #f7f8fa;
-	--color-surface: #ffffff;
-	--color-surface-2: #fafbfc;
-	--color-surface-3: #f0f1f4;
-	--color-line: #e6e8ec;
-	--color-line-strong: #c2c8d2;
-	--color-ink-900: #16181d;
-	--color-ink-700: #3d424d;
-	--color-ink-500: #6b7280;
-	--color-ink-400: #9aa0a6;
-	--color-brand: #0f6e56;
-	--color-brand-soft: #e1f5ee;
-	--color-on-brand: #ffffff;
-	--color-danger: #a32d2d;
-	--color-danger-soft: #fcebeb;
-	--color-warn: #8a6d1f;
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #fafbfc;
+  --color-surface-3: #f0f1f4;
+  --color-line: #e6e8ec;
+  --color-line-strong: #c2c8d2;
+  --color-ink-900: #16181d;
+  --color-ink-700: #3d424d;
+  --color-ink-500: #6b7280;
+  --color-ink-400: #9aa0a6;
+  --color-brand: #0f6e56;
+  --color-brand-soft: #e1f5ee;
+  --color-on-brand: #ffffff;
+  --color-danger: #a32d2d;
+  --color-danger-soft: #fcebeb;
+  --color-warn: #8a6d1f;
 }
 
 /* 暗黑：同一组 token 换值，不改任何类名。
    选择器写成 html[data-theme] 而不是 :root，是为了在层叠里压过 @theme 生成的 :root。 */
 html[data-theme='dark'] {
-	--color-bg: #0e1116;
-	--color-surface: #171b21;
-	--color-surface-2: #1c2129;
-	--color-surface-3: #232a33;
-	--color-line: #2c333d;
-	--color-line-strong: #3f4855;
-	--color-ink-900: #e9ecf1;
-	--color-ink-700: #c3cad4;
-	--color-ink-500: #949fab;
-	--color-ink-400: #6d7784;
-	--color-brand: #35b18c;
-	--color-brand-soft: #10322a;
-	--color-on-brand: #06231b;
-	--color-danger: #e0796a;
-	--color-danger-soft: #3c1f1b;
-	--color-warn: #d9b45f;
+  --color-bg: #0e1116;
+  --color-surface: #171b21;
+  --color-surface-2: #1c2129;
+  --color-surface-3: #232a33;
+  --color-line: #2c333d;
+  --color-line-strong: #3f4855;
+  --color-ink-900: #e9ecf1;
+  --color-ink-700: #c3cad4;
+  --color-ink-500: #949fab;
+  --color-ink-400: #6d7784;
+  --color-brand: #35b18c;
+  --color-brand-soft: #10322a;
+  --color-on-brand: #06231b;
+  --color-danger: #e0796a;
+  --color-danger-soft: #3c1f1b;
+  --color-warn: #d9b45f;
 }
 
 html {
-	background: var(--color-bg);
+  background: var(--color-bg);
 }
 
 body {
-	font-family: var(--font-sans);
-	-webkit-font-smoothing: auto;
-	-moz-osx-font-smoothing: auto;
-	color: var(--color-ink-900);
-	background: var(--color-bg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  color: var(--color-ink-900);
+  background: var(--color-bg);
 }
 
 .card {
-	background: var(--color-surface);
-	border: 1px solid var(--color-line);
-	border-radius: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
 }
 
 .num {
-	font-variant-numeric: tabular-nums;
-	letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 a {
-	color: inherit;
-	text-decoration: none;
+  color: inherit;
+  text-decoration: none;
 }
 
 /* 表单控件在暗黑下必须显式接管：只设 color-scheme 会让浏览器给 select/option 一套
@@ -79,10 +79,10 @@ a {
 input,
 select,
 textarea {
-	background: var(--color-surface);
-	color: var(--color-ink-900);
+  background: var(--color-surface);
+  color: var(--color-ink-900);
 }
 
 input::placeholder {
-	color: var(--color-ink-400);
+  color: var(--color-ink-400);
 }

@@ -1,57 +1,57 @@
 <!doctype html>
 <html lang="zh-CN">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
-		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-		<meta name="color-scheme" content="light" />
-		<title>知常 · 健康数据</title>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <title>知常 · 健康数据</title>
 
-		<!-- PWA：深浅两套 theme-color 按「浅在前、深在后」排列，装成主屏应用后状态栏随系统外观 -->
-		<meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)" />
-		<meta name="theme-color" content="#16181d" media="(prefers-color-scheme: dark)" />
-		<link rel="manifest" href="/manifest.webmanifest" />
+    <!-- PWA：深浅两套 theme-color 按「浅在前、深在后」排列，装成主屏应用后状态栏随系统外观 -->
+    <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16181d" media="(prefers-color-scheme: dark)" />
+    <link rel="manifest" href="/manifest.webmanifest" />
 
-		<meta name="mobile-web-app-capable" content="yes" />
-		<meta name="apple-mobile-web-app-capable" content="yes" />
-		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
-		<meta name="apple-mobile-web-app-title" content="知常" />
-		<meta name="format-detection" content="telephone=no" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="知常" />
+    <meta name="format-detection" content="telephone=no" />
 
-		<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
-		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-		<link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
-		<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 
-		<script>
-			// 预注水定色：Svelte 挂载前就把 data-theme 挂上，
-			// 否则暗黑用户每次进来都要先闪一帧浅色底。逻辑与 lib/theme.svelte.ts 一致，
-			// 这里只读不写——偏好仍然是应用内改、这里只负责首屏别错色。
-			(function () {
-				var pref = 'system';
-				try {
-					pref = localStorage.getItem('zhichang.theme') || 'system';
-				} catch (e) {
-					/* 隐私模式读不到，按跟随系统 */
-				}
-				var dark =
-					pref === 'dark' ||
-					(pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-				document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-				var m = document.querySelector('meta[name="color-scheme"]');
-				if (m) m.setAttribute('content', dark ? 'dark' : 'light');
-			})();
-		</script>
+    <script>
+      // 预注水定色：Svelte 挂载前就把 data-theme 挂上，
+      // 否则暗黑用户每次进来都要先闪一帧浅色底。逻辑与 lib/theme.svelte.ts 一致，
+      // 这里只读不写——偏好仍然是应用内改、这里只负责首屏别错色。
+      (function () {
+        var pref = 'system';
+        try {
+          pref = localStorage.getItem('zhichang.theme') || 'system';
+        } catch (e) {
+          /* 隐私模式读不到，按跟随系统 */
+        }
+        var dark =
+          pref === 'dark' ||
+          (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        var m = document.querySelector('meta[name="color-scheme"]');
+        if (m) m.setAttribute('content', dark ? 'dark' : 'light');
+      })();
+    </script>
 
-		%sveltekit.head%
-	</head>
-	<body data-sveltekit-preload-data="hover">
-		<div style="display: contents">%sveltekit.body%</div>
-		<!-- SvelteKit 3 不支持 transformIndexHtml，注册脚本无法由插件注入，只能显式写在这里 -->
-		<script>
-			if ('serviceWorker' in navigator) {
-				navigator.serviceWorker.register('/sw.js').catch(function () {});
-			}
-		</script>
-	</body>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+    <!-- SvelteKit 3 不支持 transformIndexHtml，注册脚本无法由插件注入，只能显式写在这里 -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(function () {});
+      }
+    </script>
+  </body>
 </html>
