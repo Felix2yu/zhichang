@@ -19,41 +19,41 @@ export type MetricDirection = 'up-good' | 'down-good' | 'neutral';
 
 /** 越高越好的指标。 */
 const UP_GOOD: string[] = [
-	'step_count',
-	'active_energy',
-	'basal_energy_burned',
-	'flights_climbed',
-	'walking_running_distance',
-	'cycling_distance',
-	'exercise_time',
-	'stand_time',
-	'stand_hour',
-	'time_in_daylight',
-	'dietary_water',
-	'mindful_minutes',
-	'heart_rate_variability',
-	'oxygen_saturation',
-	'vo2_max',
-	'peak_expiratory_flow_rate',
-	'forced_vital_capacity',
-	'sleep_analysis'
+  'step_count',
+  'active_energy',
+  'basal_energy_burned',
+  'flights_climbed',
+  'walking_running_distance',
+  'cycling_distance',
+  'exercise_time',
+  'stand_time',
+  'stand_hour',
+  'time_in_daylight',
+  'dietary_water',
+  'mindful_minutes',
+  'heart_rate_variability',
+  'oxygen_saturation',
+  'vo2_max',
+  'peak_expiratory_flow_rate',
+  'forced_vital_capacity',
+  'sleep_analysis'
 ];
 
 /** 越低越好的指标。 */
 const DOWN_GOOD: string[] = [
-	'resting_heart_rate',
-	'walking_heart_rate_average',
-	'atrial_fibrillation_burden',
-	'respiratory_rate',
-	'body_mass',
-	'body_mass_index',
-	'body_fat_percentage',
-	'blood_glucose',
-	'blood_pressure_systolic',
-	'blood_pressure_diastolic',
-	'caffeine',
-	'headphone_audio_exposure',
-	'environmental_audio_exposure'
+  'resting_heart_rate',
+  'walking_heart_rate_average',
+  'atrial_fibrillation_burden',
+  'respiratory_rate',
+  'body_mass',
+  'body_mass_index',
+  'body_fat_percentage',
+  'blood_glucose',
+  'blood_pressure_systolic',
+  'blood_pressure_diastolic',
+  'caffeine',
+  'headphone_audio_exposure',
+  'environmental_audio_exposure'
 ];
 
 const table = new Map<string, MetricDirection>();
@@ -62,7 +62,7 @@ for (const m of DOWN_GOOD) table.set(m, 'down-good');
 
 /** 返回指标的方向；未登记的指标一律中性。 */
 export function directionOf(metric: string): MetricDirection {
-	return table.get(metric) ?? 'neutral';
+  return table.get(metric) ?? 'neutral';
 }
 
 /** 偏离常态的色彩档位：good 用品牌绿，bad 用告警红，neutral 用次级灰。 */
@@ -73,19 +73,19 @@ export type DeviationTone = 'good' | 'bad' | 'neutral';
  * 幅度给不出来（常态缺失）或方向中性的指标一律中性色。
  */
 export function toneOf(metric: string, pct: number | null): DeviationTone {
-	if (pct === null || !Number.isFinite(pct)) return 'neutral';
-	const dir = directionOf(metric);
-	if (dir === 'neutral') return 'neutral';
-	return dir === 'up-good' ? (pct > 0 ? 'good' : 'bad') : pct < 0 ? 'good' : 'bad';
+  if (pct === null || !Number.isFinite(pct)) return 'neutral';
+  const dir = directionOf(metric);
+  if (dir === 'neutral') return 'neutral';
+  return dir === 'up-good' ? (pct > 0 ? 'good' : 'bad') : pct < 0 ? 'good' : 'bad';
 }
 
 export const TONE_CLASS: Record<DeviationTone, string> = {
-	good: 'text-[#0f6e56]',
-	bad: 'text-[#a32d2d]',
-	neutral: 'text-[var(--color-ink-500)]'
+  good: 'text-[#0f6e56]',
+  bad: 'text-[#a32d2d]',
+  neutral: 'text-[var(--color-ink-500)]'
 };
 
 /** 偏离方向的中文措辞。刻意只说「偏高 / 偏低」，不下「好 / 坏」结论。 */
 export function deviationWord(pct: number): string {
-	return pct >= 0 ? '偏高' : '偏低';
+  return pct >= 0 ? '偏高' : '偏低';
 }

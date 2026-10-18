@@ -10,22 +10,25 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function buildVersion() {
-	try {
-		const rev = execSync('git rev-parse --short HEAD', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] })
-			.toString()
-			.trim();
-		return rev || Date.now().toString(36);
-	} catch {
-		return Date.now().toString(36);
-	}
+  try {
+    const rev = execSync('git rev-parse --short HEAD', {
+      cwd: root,
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+      .toString()
+      .trim();
+    return rev || Date.now().toString(36);
+  } catch {
+    return Date.now().toString(36);
+  }
 }
 
 const src = readFileSync(resolve(root, 'src/sw-template.js'), 'utf8');
 // replaceAll：模板的头部注释里也提到这个占位符，replace 只会命中注释里的那一次
 const out = src.replaceAll('__BUILD_VERSION__', buildVersion());
 if (out === src) {
-	console.error('sw-template.js 里的 __BUILD_VERSION__ 没有被替换，检查模板是否被改动');
-	process.exit(1);
+  console.error('sw-template.js 里的 __BUILD_VERSION__ 没有被替换，检查模板是否被改动');
+  process.exit(1);
 }
 
 const target = resolve(root, 'build');
