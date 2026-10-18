@@ -3,22 +3,19 @@
 # 二进制由 CI 预编译（CGO_ENABLED=0，静态链接）到 bin/zhichangd，前端产物在编译时
 # 已通过 go:embed 打进同一个二进制，因此镜像里既不需要 Go 也不需要 Node 工具链。
 # 本地构建前必须先产出二进制：make build（CI 同样如此，缺产物时 COPY 直接失败）。
-FROM alpine:3.24
+#
+# 基镜 ghcr.io/felix2yu/base:alpine-3.24 提供 ca-certificates、su-exec、tzdata
+# 与 PUID/PGID 降权入口（容器内的自然日不能跟着 UTC 走，tzdata 不可缺）。
+FROM ghcr.io/felix2yu/base:alpine-3.24
 
-RUN apk add --no-cache ca-certificates su-exec tzdata \
-	&& addgroup -g 1000 zhichang \
-	&& adduser -D -u 1000 -G zhichang zhichang \
-	&& mkdir -p /data && chown zhichang:zhichang /data
+RUN mkdir -p /data
 
 COPY bin/zhichangd /usr/local/bin/zhichangd
-# --chmod 把原来的 COPY + RUN chmod 合并成一层
-COPY --chmod=755 scripts/docker-entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV ZHICHANG_HTTP_ADDR=:8787 \
 	ZHICHANG_HOME_TZ=Asia/Shanghai \
 	ZHICHANG_RAW_ARCHIVE_DIR=/data/archive \
-	PUID=1000 \
-	PGID=1000
+	APP_DATA_DIR=/data
 # 单独一行：容器内的自然日（聚合、归档目录）不能跟着镜像默认的 UTC 走
 ENV TZ=Asia/Shanghai
 
@@ -29,5 +26,4 @@ VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
 	CMD wget -q -O- http://127.0.0.1:8787/api/health >/dev/null || exit 1
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["zhichangd"]
