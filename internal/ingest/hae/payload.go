@@ -243,6 +243,32 @@ type Workout struct {
 	// Splits 原样留着：分段结构随上游版本变（公里与英里两套并存、字段名换过），
 	// 解析成列会把形态固化，而它只用于核对，不参与聚合。
 	Splits json.RawMessage `json:"splits"`
+
+	// —— 运动内部的逐分钟数组（v3 形态）。上游给的是数组而不是聚合对象，
+	// 按 Quantity 解析会整段被忽略（基础能量就是这样一年没落过库）。
+	StepCount     Totals `json:"stepCount"`
+	ActiveSeries  Totals `json:"activeEnergy"`
+	WalkingSeries Totals `json:"walkingAndRunningDistance"`
+	CyclingSeries Totals `json:"cyclingDistance"`
+
+	// —— 运动级标量。上游同时用两个字段名给平均心率（avgHeartRate 与 heartRate.avg，
+	// 实测 110 条全部相等），所以 HeartRate 只收 min：那才是别处没有的量。
+	// speed 与 avgSpeed **不是**同一个量（实测 109 条全部不同），两个都留。
+	HeartRate    HRStats  `json:"heartRate"`
+	Speed        Quantity `json:"speed"`
+	StepCadence  Quantity `json:"stepCadence"`
+	Intensity    Quantity `json:"intensity"`
+	EstimatedEff Quantity `json:"estimatedEffortScore"`
+	// UpstreamID 是导出自己的运动编号。入库去重键是 (name, source, start_time)，
+	// 这个号不参与判定，只留在 meta 里供与上游核对。
+	UpstreamID string `json:"id"`
+}
+
+// HRStats 是运动内心率的三元组。
+type HRStats struct {
+	Min Quantity `json:"min"`
+	Avg Quantity `json:"avg"`
+	Max Quantity `json:"max"`
 }
 
 // LaxBool 兼容 true/false、0/1 与 "yes"/"no" 文本；认不出按未提供处理。

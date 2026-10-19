@@ -304,8 +304,75 @@ func normalizeWorkout(w Workout, home *time.Location) (sample.Workout, bool) {
 		wo.Splits = append([]byte(nil), w.Splits...)
 	}
 	wo.Route = normalizeRoute(w.Route, home)
+	wo.Series = workoutSeries(w, st, home)
 	wo.Meta = workoutMeta(w)
 	return wo, true
+}
+
+// seriesTargetUnits 把运动内的逐分钟数组对齐到指标字典的口径。
+//
+// 名字与单位都必须跟字典一致（step_count 的单位是 count、active_energy 是 kcal…）：
+// 逐分钟点写进 workout_metric_series 后，界面按字典名与字典单位渲染，
+// 只换算值不换算单位、或干脆用上游名登记，就会把 1255 kJ 标成「1255 kcal」——
+// 虚高 4.18 倍而且完全看不出错。
+//
+// 写死在这里而不是查字典，与 workoutEnergyUnit / workoutDistanceUnit 同一取舍；
+// 两者不会漂移由 metric 包的契约测试锁住。
+var seriesTargetUnits = map[string]string{
+	"step_count":               "count",
+	"active_energy":            workoutEnergyUnit,
+	"basal_energy_burned":      workoutEnergyUnit,
+	"walking_running_distance": workoutDistanceUnit,
+	"cycling_distance":         workoutDistanceUnit,
+}
+
+// workoutSeries 把运动内部的逐分钟数组换成「相对运动起点的秒数 + 字典口径的值」。
+//
+// 逐点时间认不出只丢那一个点：这里存的是显式秒数（不像心电波形按索引推时轴），
+// 少一个点后面不会错位。序列一个点都不剩时整条不写。
+//
+// 单位取第一个点的换算结果：上游在同一数组里换单位没有先例，而真出现时
+// 「保留第一个 + 原样换算其余」与心电波形的分歧处理同一取舍——
+// 猜一个系数比承认它可疑更危险。
+func workoutSeries(w Workout, start time.Time, home *time.Location) []sample.WorkoutSeries {
+	input := []struct {
+		metric string
+		t      Totals
+	}{
+		{"step_count", w.StepCount},
+		{"active_energy", w.ActiveSeries},
+		{"basal_energy_burned", w.BasalEnergy},
+		{"walking_running_distance", w.WalkingSeries},
+		{"cycling_distance", w.CyclingSeries},
+	}
+	var out []sample.WorkoutSeries
+	for _, in := range input {
+		if len(in.t.Points) == 0 {
+			continue
+		}
+		to := seriesTargetUnits[in.metric]
+		pts := make([]sample.WorkoutPoint, 0, len(in.t.Points))
+		unit := ""
+		for _, p := range in.t.Points {
+			if !p.Qty.Set {
+				continue
+			}
+			t, _, ok := tz.ParseWithFallback(p.Date, home)
+			if !ok {
+				continue
+			}
+			v, u := metric.ConvertUnit(p.Qty.Value, p.Units, to)
+			if unit == "" {
+				unit = u
+			}
+			pts = append(pts, sample.WorkoutPoint{AtSec: int32(t.Sub(start).Seconds()), Value: v})
+		}
+		if len(pts) == 0 {
+			continue
+		}
+		out = append(out, sample.WorkoutSeries{Metric: in.metric, Unit: unit, Points: pts})
+	}
+	return out
 }
 
 // normalizeRoute 把导出内嵌的 route[] 换成「相对第一个点的秒数 + 坐标」。
@@ -435,6 +502,7 @@ func workoutMeta(w Workout) map[string]any {
 		}
 	}
 	put("basal_energy", w.BasalEnergy.Quantity())
+	put("step_count", w.StepCount.Quantity())
 	put("flights", w.Flights)
 	put("elevation_up", w.ElevationUp)
 	put("elevation_down", w.ElevationDown)
@@ -442,6 +510,17 @@ func workoutMeta(w Workout) map[string]any {
 	put("humidity", w.Humidity)
 	put("avg_speed", w.AvgSpeed)
 	put("max_speed", w.MaxSpeed)
+	// heartRate.avg / .max 与 avgHeartRate / maxHeartRate 是同一量的两种写法
+	// （实测 110 条全部相等），只有 min 是别处没有的，所以只收 min。
+	put("min_heart_rate", w.HeartRate.Min)
+	// speed 与 avgSpeed 实测 109 条全部不相等：是两个不同的量，都留着。
+	put("speed", w.Speed)
+	put("step_cadence", w.StepCadence)
+	put("intensity", w.Intensity)
+	put("estimated_effort_score", w.EstimatedEff)
+	if w.UpstreamID != "" {
+		m["upstream_id"] = w.UpstreamID
+	}
 	if w.Indoor.Set {
 		m["indoor"] = w.Indoor.Value
 	}

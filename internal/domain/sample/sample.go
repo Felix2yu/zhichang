@@ -83,10 +83,20 @@ type Workout struct {
 	Splits []byte
 	// Route 是导出内嵌的 GPS 轨迹；nil 表示这条运动没有可用轨迹
 	// （室内运动本来就没有，或上游形态不可用）。
-	Route       *WorkoutRoute
+	Route *WorkoutRoute
+	// Series 是运动内部按分钟摊开的量（步数、能量、距离），按指标字典的规范名与
+	// 字典单位存。归属是「这一次运动里」，不是 (local_date, metric)——后者已有日内聚合。
+	Series      []WorkoutSeries
 	LocalDate   string
 	TZOffsetMin int
 	Meta        map[string]any
+}
+
+// WorkoutSeries 是一条运动内某个量的逐分钟序列。
+type WorkoutSeries struct {
+	Metric string
+	Unit   string
+	Points []WorkoutPoint
 }
 
 // WorkoutRoutePoint 是轨迹上的一个点：相对第一个点的秒数与坐标。

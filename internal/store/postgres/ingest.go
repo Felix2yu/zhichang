@@ -229,6 +229,9 @@ func (db *DB) WriteWorkouts(ctx context.Context, runID int64, list []sample.Work
 		if err := db.writeWorkoutSeries(ctx, id, w); err != nil {
 			return n, err
 		}
+		if err := db.writeWorkoutMetricSeries(ctx, id, w); err != nil {
+			return n, err
+		}
 		if _, err := db.WriteEmbeddedRoute(ctx, id, w.Route); err != nil {
 			return n, err
 		}
@@ -259,6 +262,34 @@ func (db *DB) writeWorkoutSeries(ctx context.Context, workoutID int64, w sample.
 	}
 	_, err := db.Pool.Exec(ctx, q, workoutID, secs, vals, rsecs, rvals, splits)
 	return err
+}
+
+// writeWorkoutMetricSeries 落运动内部的逐分钟数组（步数、能量、距离）。
+//
+// 空序列不写行，与 workout_series 同一理由：一行空数组会被读成「采到了但全是空的」。
+// 覆盖只在内容真的变了时发生：自动化的日期窗口重叠是常态，同一批逐分钟点会被反复送到，
+// 无条件重写等于每次同步都重刷上万个点的数组。
+func (db *DB) writeWorkoutMetricSeries(ctx context.Context, workoutID int64, w sample.Workout) error {
+	const q = `INSERT INTO workout_metric_series (workout_id, metric, unit, at_secs, vals)
+		VALUES ($1,$2,$3,$4,$5)
+		ON CONFLICT (workout_id, metric) DO UPDATE SET
+			unit = EXCLUDED.unit,
+			at_secs = EXCLUDED.at_secs,
+			vals = EXCLUDED.vals,
+			ingested_at = now()
+		WHERE workout_metric_series.vals IS DISTINCT FROM EXCLUDED.vals
+		   OR workout_metric_series.at_secs IS DISTINCT FROM EXCLUDED.at_secs
+		   OR workout_metric_series.unit IS DISTINCT FROM EXCLUDED.unit`
+	for _, s := range w.Series {
+		secs, vals := splitPoints(s.Points)
+		if secs == nil {
+			continue
+		}
+		if _, err := db.Pool.Exec(ctx, q, workoutID, s.Metric, nullable(s.Unit), secs, vals); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // splitPoints 把 [{at,value}] 拆成两条平行数组（库里存数组，读一次即得整条曲线）。
