@@ -2,6 +2,7 @@ package hae
 
 import (
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -302,8 +303,81 @@ func normalizeWorkout(w Workout, home *time.Location) (sample.Workout, bool) {
 	if len(w.Splits) > 0 && string(w.Splits) != "null" {
 		wo.Splits = append([]byte(nil), w.Splits...)
 	}
+	wo.Route = normalizeRoute(w.Route, home)
 	wo.Meta = workoutMeta(w)
 	return wo, true
+}
+
+// normalizeRoute 把导出内嵌的 route[] 换成「相对第一个点的秒数 + 坐标」。
+//
+// 三条判据与 GPX 导入侧（gpx.readPoint）逐字对齐：同一批运动喂同一个折线渲染器，
+// 两套判据不一致会让界面画出两种结果，而这两种结果看起来都「像是数据」。
+//   - 缺经纬度、或坐标为 (0,0) 的点丢弃：那不是赤道与本初子午线的交点，而是没定位成功，
+//     留着会把 bbox 与折线同时画错。
+//   - 任一点的时间认不出来 → 整条轨迹不要：时轴按索引推，中间少一个时间，
+//     后面的点全部错位，画出一条时间轴错的折线比不画更糟。
+//   - 缺海拔按 0 存：海拔不进时轴，缺它只影响着色，不影响位置本身。
+func normalizeRoute(pts RouteSeries, home *time.Location) *sample.WorkoutRoute {
+	if len(pts) == 0 {
+		return nil
+	}
+	type kept struct {
+		at       time.Time
+		lat, lon float64
+		ele      float64
+	}
+	keep := make([]kept, 0, len(pts))
+	for _, p := range pts {
+		if !p.Latitude.Set || !p.Longitude.Set {
+			continue
+		}
+		if p.Latitude.Value == 0 && p.Longitude.Value == 0 {
+			continue
+		}
+		at, ok := routeTime(string(p.Timestamp), home)
+		if !ok {
+			return nil
+		}
+		var ele float64
+		if p.Altitude.Set {
+			ele = p.Altitude.Value
+		}
+		keep = append(keep, kept{at: at, lat: p.Latitude.Value, lon: p.Longitude.Value, ele: ele})
+	}
+	if len(keep) == 0 {
+		return nil
+	}
+	start := keep[0].at
+	out := &sample.WorkoutRoute{
+		StartTime: start.UTC(),
+		EndTime:   keep[len(keep)-1].at.UTC(),
+		Points:    make([]sample.WorkoutRoutePoint, len(keep)),
+	}
+	for i, k := range keep {
+		out.Points[i] = sample.WorkoutRoutePoint{
+			AtSec: int32(k.at.Sub(start).Seconds()),
+			Lat:   k.lat, Lon: k.lon, Ele: k.ele,
+		}
+	}
+	return out
+}
+
+// routeTime 解释一个轨迹点的时间。
+//
+// 形态收两种：日期字符串（实测导出就是这样）与裸的 unix 秒。后者不是假设——
+// HAE 在别处（心电逐点时间）用的就是 unix 秒，而逐点时间正是它换过形态的字段。
+func routeTime(s string, home *time.Location) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	if t, _, ok := tz.ParseWithFallback(s, home); ok {
+		return t, true
+	}
+	if f, err := strconv.ParseFloat(s, 64); err == nil && f > 0 {
+		return time.Unix(int64(f), 0).UTC(), true
+	}
+	return time.Time{}, false
 }
 
 // qtyOrNil 取带单位数量里的数值，缺失返回 nil（落库为 NULL，而不是 0）。

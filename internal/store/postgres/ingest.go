@@ -229,6 +229,9 @@ func (db *DB) WriteWorkouts(ctx context.Context, runID int64, list []sample.Work
 		if err := db.writeWorkoutSeries(ctx, id, w); err != nil {
 			return n, err
 		}
+		if _, err := db.WriteEmbeddedRoute(ctx, id, w.Route); err != nil {
+			return n, err
+		}
 	}
 	return n, nil
 }

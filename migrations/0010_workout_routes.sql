@@ -8,8 +8,13 @@
 -- HAE 各版本间变过，存下来只会把两种形态一起固化，并让时轴有两个可能互相矛盾的来源。
 -- 代价是任一缺点时间就得整条丢弃（导入侧强制），因为按索引推时轴的前提是点数完整。
 --
--- 只由本机命令行写入（zhichangd import-routes），接入端点不收轨迹：
--- 逐点经纬度是位置数据，比任何生理指标都更直接地暴露「人在哪里」。
+-- 建表时只由本机命令行写入（zhichangd import-routes），接入端点不收轨迹。
+--
+-- 这条口径后来变了，原因不是判断错了，而是前提不成立：同一份 HAE 导出在 JSON 里
+-- 本来就带着 workouts[].route（实测一年 109 条运动、30.7 万个点），逐点经纬度随 POST
+-- 已经进了服务器。端点不解析它只是把数据丢掉，并不减少一分暴露，而界面会显示成
+-- 「这条运动没有轨迹」，看不出是上游没给还是应用没收。现在摄入侧也写这张表，
+-- 覆盖方向单向：自动写入只覆盖自动写入，手工导入的 GPX 永不被后台同步顶掉。
 
 CREATE TABLE IF NOT EXISTS workout_routes (
     workout_id   bigint PRIMARY KEY REFERENCES workouts(id) ON DELETE CASCADE,

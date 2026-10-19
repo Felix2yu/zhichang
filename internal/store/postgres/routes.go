@@ -2,11 +2,16 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/Felix2yu/zhichang/internal/domain/sample"
 	"github.com/Felix2yu/zhichang/internal/gpx"
 )
 
@@ -45,14 +50,77 @@ func (db *DB) MatchWorkoutByWall(ctx context.Context, name, wall string) ([]int6
 	return ids, rows.Err()
 }
 
-// WriteRoute 写入一条轨迹，返回是否真的写了（false = 指纹相同、内容没变）。
+// WriteRoute 写入一条 GPX 导入的轨迹，返回是否真的写了（false = 指纹相同、内容没变）。
+func (db *DB) WriteRoute(ctx context.Context, workoutID int64, r *gpx.Route, sha string) (bool, error) {
+	return db.writeRoute(ctx, routeRow{
+		WorkoutID: workoutID, FileName: r.FileName, SHA256: sha,
+		Start: r.StartTime, End: r.EndTime,
+		Lats: r.Lats, Lons: r.Lons, Eles: r.Eles, AtSecs: r.AtSec,
+	})
+}
+
+// embeddedRouteFile 标记「轨迹来自导出内嵌的 route[]」，与 import-routes 手工导入的 GPX 区分开。
+//
+// 它是覆盖规则的唯一依据：自动写入只覆盖同为自动写入的那一行，手工导入的轨迹永远不会
+// 被一次投递顶掉。两条路径写同一张表是有意为之——同一批运动只该有一条折线，
+// 而不是「看谁最后跑」。
+const embeddedRouteFile = "health-auto-export.json"
+
+// WriteEmbeddedRoute 写入导出内嵌的轨迹，返回是否真的写了。
+//
+// 指纹取「解码后的点序列」而不是负载的 sha256：同一份轨迹换个导出批次送来
+// （日期范围重叠是常态），负载哈希必然不同，于是每条重放都要重写一遍 30 万点。
+// 按内容判「没变过」才让自动同步可以反复跑。
+func (db *DB) WriteEmbeddedRoute(ctx context.Context, workoutID int64, r *sample.WorkoutRoute) (bool, error) {
+	if r == nil || len(r.Points) == 0 {
+		return false, nil
+	}
+	lats := make([]float64, len(r.Points))
+	lons := make([]float64, len(r.Points))
+	eles := make([]float64, len(r.Points))
+	secs := make([]int32, len(r.Points))
+	for i, p := range r.Points {
+		lats[i], lons[i], eles[i], secs[i] = p.Lat, p.Lon, p.Ele, p.AtSec
+	}
+	return db.writeRoute(ctx, routeRow{
+		WorkoutID: workoutID, FileName: embeddedRouteFile, SHA256: routeFingerprint(r),
+		Start: r.StartTime, End: r.EndTime,
+		Lats: lats, Lons: lons, Eles: eles, AtSecs: secs,
+		KeepOtherSource: true,
+	})
+}
+
+// routeRow 是一条轨迹的写入参数（两条来源共用一套列）。
+type routeRow struct {
+	WorkoutID int64
+	FileName  string
+	SHA256    string
+	Start     time.Time
+	End       time.Time
+	Lats      []float64
+	Lons      []float64
+	Eles      []float64
+	AtSecs    []int32
+	// KeepOtherSource = true 时，已存在的行只要来源不同就整行不动。
+	KeepOtherSource bool
+}
+
+// Points 返回逐点数。
+func (r routeRow) Points() int { return len(r.Lats) }
+
+// writeRoute 落一条轨迹。
 //
 // 幂等靠 sha256 而不是「先查后插」：DO UPDATE 的 WHERE 让同指纹的重放直接空转，
 // 一次往返就够，也不用担心两个进程同时导入同一目录。
-func (db *DB) WriteRoute(ctx context.Context, workoutID int64, r *gpx.Route, sha string) (bool, error) {
+func (db *DB) writeRoute(ctx context.Context, r routeRow) (bool, error) {
 	latMin, latMax := minMax(r.Lats)
 	lonMin, lonMax := minMax(r.Lons)
 	eleMin, eleMax := minMax(r.Eles)
+	// 两条来源的覆盖规则只差一个条件，所以把那段条件拼进来而不是复制整条语句。
+	guard := `WHERE workout_routes.sha256 IS DISTINCT FROM EXCLUDED.sha256`
+	if r.KeepOtherSource {
+		guard += ` AND workout_routes.file_name = EXCLUDED.file_name`
+	}
 	tag, err := db.Pool.Exec(ctx, `INSERT INTO workout_routes
 		(workout_id, file_name, sha256, point_count, start_time, end_time,
 		 lat_min, lat_max, lon_min, lon_max, elev_min, elev_max,
@@ -70,14 +138,34 @@ func (db *DB) WriteRoute(ctx context.Context, workoutID int64, r *gpx.Route, sha
 			lats = EXCLUDED.lats, lons = EXCLUDED.lons,
 			eles = EXCLUDED.eles, at_secs = EXCLUDED.at_secs,
 			ingested_at = now()
-		WHERE workout_routes.sha256 IS DISTINCT FROM EXCLUDED.sha256`,
-		workoutID, r.FileName, sha, r.Count(), r.StartTime.UTC(), r.EndTime.UTC(),
+		`+guard,
+		r.WorkoutID, r.FileName, r.SHA256, r.Points(), r.Start.UTC(), r.End.UTC(),
 		latMin, latMax, lonMin, lonMax, eleMin, eleMax,
-		r.Lats, r.Lons, r.Eles, r.AtSec)
+		r.Lats, r.Lons, r.Eles, r.AtSecs)
 	if err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// routeFingerprint 按解码后的点序列算内容指纹。
+//
+// 用最短往返格式（'f', -1）而不是固定小数位：同一组坐标不管来自哪次投递，
+// 序列化结果必须逐字节相同，否则每轮同步都会把 30 万点重写一遍。
+func routeFingerprint(r *sample.WorkoutRoute) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%d;", r.StartTime.Unix())
+	for _, p := range r.Points {
+		h.Write([]byte(strconv.Itoa(int(p.AtSec))))
+		h.Write([]byte{','})
+		h.Write([]byte(strconv.FormatFloat(p.Lat, 'f', -1, 64)))
+		h.Write([]byte{','})
+		h.Write([]byte(strconv.FormatFloat(p.Lon, 'f', -1, 64)))
+		h.Write([]byte{','})
+		h.Write([]byte(strconv.FormatFloat(p.Ele, 'f', -1, 64)))
+		h.Write([]byte{';'})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // RouteFingerprint 返回某条运动已入库轨迹的指纹（不存在时为空串）。

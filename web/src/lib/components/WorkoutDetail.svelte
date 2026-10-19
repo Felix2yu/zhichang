@@ -176,9 +176,10 @@
       <div
         class="border-t border-[var(--color-line)] px-4 py-3 text-[12px] text-[var(--color-ink-500)]"
       >
-        这次运动没有导入轨迹。HAE 的 REST 同步不发逐点经纬度，需要在导出时勾选路线， 然后用 <code
+        这次运动没有轨迹。室内运动本就不定位；户外运动则要在 HAE 导出时勾选路线（JSON 里的
+        <code class="num">route</code> 会随摄入一起入库），或用 <code
           class="num">zhichangd import-routes &lt;GPX 目录&gt;</code
-        > 从本机导入。
+        > 从本机补那份 GPX。
       </div>
     {/if}
     {#if hrBpm.length > 1}

@@ -80,10 +80,30 @@ type Workout struct {
 	HR       []WorkoutPoint
 	Recovery []WorkoutPoint
 	// Splits 是上游分段原文（公里/英里两套并存、字段名换过），只用于核对。
-	Splits      []byte
+	Splits []byte
+	// Route 是导出内嵌的 GPS 轨迹；nil 表示这条运动没有可用轨迹
+	// （室内运动本来就没有，或上游形态不可用）。
+	Route       *WorkoutRoute
 	LocalDate   string
 	TZOffsetMin int
 	Meta        map[string]any
+}
+
+// WorkoutRoutePoint 是轨迹上的一个点：相对第一个点的秒数与坐标。
+//
+// 不存逐点绝对时刻：时轴 = StartTime + AtSec[i]，与 GPX 导入侧共用一个事实来源。
+type WorkoutRoutePoint struct {
+	AtSec int32
+	Lat   float64
+	Lon   float64
+	Ele   float64
+}
+
+// WorkoutRoute 是一条运动的轨迹。
+type WorkoutRoute struct {
+	StartTime time.Time // 第一个点的绝对时刻（UTC）
+	EndTime   time.Time // 最后一个点的绝对时刻（UTC）
+	Points    []WorkoutRoutePoint
 }
 
 // SleepSession 是一段归一化睡眠。

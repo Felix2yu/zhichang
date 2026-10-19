@@ -236,6 +236,10 @@ type Workout struct {
 	Place         Text     `json:"location"`
 	HeartRateData Series   `json:"heartRateData"`
 	Recovery      Series   `json:"heartRateRecovery"`
+	// Route 是导出内嵌的 GPS 轨迹。HAE 的自动化只能发 JSON 负载，而这份 JSON 里
+	// 本来就带着逐点经纬度（实测一年 109 条运动、30 万余个点）——
+	// 不解析它并不会让位置数据少上传一分，只是把它丢掉。
+	Route RouteSeries `json:"route"`
 	// Splits 原样留着：分段结构随上游版本变（公里与英里两套并存、字段名换过），
 	// 解析成列会把形态固化，而它只用于核对，不参与聚合。
 	Splits json.RawMessage `json:"splits"`
@@ -320,6 +324,46 @@ func (s *Series) UnmarshalJSON(p []byte) error {
 		}
 	}
 	*s = out
+	return nil
+}
+
+// RoutePoint 是导出内嵌轨迹（workouts[].route）的一个点。
+//
+// 只收画折线用得上的四项：上游还带 course/speed/*Accuracy，那是传感器航向、瞬时速度
+// 与定位置信度，界面上没有消费方。解析成列会把形态固化（与 splits 原样留着的同一取舍），
+// 而这四项之外的值留在导出文件里，需要时随时可以再收。
+type RoutePoint struct {
+	Latitude  Float `json:"latitude"`
+	Longitude Float `json:"longitude"`
+	Altitude  Float `json:"altitude"`
+	Timestamp Text  `json:"timestamp"`
+}
+
+// RouteSeries 是轨迹点数组。
+//
+// 与 Series 同一取舍：逐点独立解码，认不出的点丢掉。这里绝不能返回错误——
+// 上游把 route 写成对象或空值时，代价必须是「少一条轨迹」，
+// 而不是「整份导出 400、一个指标都入不了库」。
+type RouteSeries []RoutePoint
+
+// UnmarshalJSON 实现 json.Unmarshaler。非数组形态按「没有轨迹」处理。
+func (rs *RouteSeries) UnmarshalJSON(p []byte) error {
+	trimmed := bytes.TrimSpace(p)
+	if len(trimmed) == 0 || trimmed[0] != '[' {
+		return nil
+	}
+	var raw []json.RawMessage
+	if err := json.Unmarshal(trimmed, &raw); err != nil {
+		return nil
+	}
+	out := make([]RoutePoint, 0, len(raw))
+	for _, one := range raw {
+		var pt RoutePoint
+		if err := json.Unmarshal(one, &pt); err == nil {
+			out = append(out, pt)
+		}
+	}
+	*rs = out
 	return nil
 }
 
