@@ -1,0 +1,838 @@
+{
+  "data": {
+    "metrics": [
+      {
+        "name": "active_energy",
+        "units": "kJ",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "apple_exercise_time",
+        "units": "min",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "apple_sleeping_wrist_temperature",
+        "units": "degC",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "apple_stand_hour",
+        "units": "count",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "apple_stand_time",
+        "units": "min",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "atrial_fibrillation_burden",
+        "units": "%",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "basal_energy_burned",
+        "units": "kJ",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "blood_oxygen_saturation",
+        "units": "%",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "blood_pressure",
+        "units": "mmHg",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "systolic": 120,
+            "diastolic": 80,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "caffeine",
+        "units": "mg",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "cardio_recovery",
+        "units": "count/min",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "cycling_distance",
+        "units": "km",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "dietary_water",
+        "units": "mL",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "environmental_audio_exposure",
+        "units": "dBASPL",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "flights_climbed",
+        "units": "count",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "headphone_audio_exposure",
+        "units": "dBASPL",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "heart_rate",
+        "units": "count/min",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "Avg": 65,
+            "Min": 50,
+            "Max": 80,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "heart_rate_variability",
+        "units": "ms",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "mindful_minutes",
+        "units": "min",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "physical_effort",
+        "units": "kcal/hr·kg",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "respiratory_rate",
+        "units": "count/min",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "resting_heart_rate",
+        "units": "count/min",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "running_power",
+        "units": "W",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "running_speed",
+        "units": "km/hr",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "sexual_activity",
+        "units": "count",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "Protection Not Used": 1,
+            "Protection Used": 1,
+            "Unspecified": 1,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "six_minute_walking_test_distance",
+        "units": "m",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "sleep_analysis",
+        "units": "hr",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "totalSleep": 12.5,
+            "asleep": 11.5,
+            "core": 6.5,
+            "deep": 2.5,
+            "rem": 2.5,
+            "awake": 1.5,
+            "inBed": 0,
+            "sleepStart": "2026-05-02 23:30:00 +0800",
+            "sleepEnd": "2026-05-03 07:00:00 +0800",
+            "inBedStart": "2026-05-02 23:10:00 +0800",
+            "inBedEnd": "2026-05-03 07:40:00 +0800",
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "stair_speed_down",
+        "units": "m/s",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "stair_speed_up",
+        "units": "m/s",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "step_count",
+        "units": "count",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "time_in_daylight",
+        "units": "min",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "toothbrushing",
+        "units": "s",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "vo2_max",
+        "units": "ml/(kg·min)",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "walking_asymmetry_percentage",
+        "units": "%",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "walking_double_support_percentage",
+        "units": "%",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "walking_heart_rate_average",
+        "units": "count/min",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "walking_running_distance",
+        "units": "km",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "walking_speed",
+        "units": "km/hr",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "walking_step_length",
+        "units": "cm",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "weight_body_mass",
+        "units": "kg",
+        "data": [
+          {
+            "date": "2026-05-03 00:00:00 +0800",
+            "qty": 12.5,
+            "source": "小明的Apple Watch"
+          }
+        ]
+      }
+    ],
+    "workouts": [
+      {
+        "id": "1847",
+        "name": "户外 步行",
+        "start": "2026-05-03 08:00:00 +0800",
+        "end": "2026-05-03 08:20:00 +0800",
+        "duration": 1200,
+        "source": {
+          "name": "小明的Apple Watch",
+          "identifier": "com.apple.health.00000000-0000-4000-8000-000000000001"
+        },
+        "totalEnergy": {
+          "qty": 418.4,
+          "units": "kJ"
+        },
+        "distance": {
+          "qty": 1.2,
+          "units": "km"
+        },
+        "activeEnergyBurned": {
+          "qty": 209.2,
+          "units": "kJ"
+        },
+        "basalEnergy": [
+          {
+            "date": "2026-05-03 08:01:00 +0800",
+            "qty": 4.184,
+            "units": "kJ",
+            "source": "小明的Apple Watch"
+          },
+          {
+            "date": "2026-05-03 08:02:00 +0800",
+            "qty": 6.276,
+            "units": "kJ",
+            "source": "小明的Apple Watch"
+          }
+        ],
+        "activeEnergy": [
+          {
+            "date": "2026-05-03 08:01:00 +0800",
+            "qty": 10.46,
+            "units": "kJ",
+            "source": "小明的Apple Watch"
+          }
+        ],
+        "stepCount": [
+          {
+            "date": "2026-05-03 08:01:00 +0800",
+            "qty": 40,
+            "units": "步",
+            "source": "小明的Apple Watch"
+          },
+          {
+            "date": "2026-05-03 08:02:00 +0800",
+            "qty": 60,
+            "units": "步",
+            "source": "小明的Apple Watch"
+          },
+          {
+            "date": "2026-05-03 08:03:00 +0800",
+            "units": "步",
+            "source": "小明的Apple Watch"
+          }
+        ],
+        "walkingAndRunningDistance": [
+          {
+            "date": "2026-05-03 08:01:00 +0800",
+            "qty": 0.05,
+            "units": "km",
+            "source": "小明的Apple Watch"
+          }
+        ],
+        "cyclingDistance": [
+          {
+            "date": "2026-05-03 08:01:00 +0800",
+            "qty": 0.2,
+            "units": "km",
+            "source": "小明的Apple Watch"
+          }
+        ],
+        "avgHeartRate": {
+          "qty": 100,
+          "units": "bpm"
+        },
+        "maxHeartRate": {
+          "qty": 130,
+          "units": "bpm"
+        },
+        "heartRate": {
+          "min": {
+            "qty": 72,
+            "units": "bpm"
+          },
+          "avg": {
+            "qty": 100,
+            "units": "bpm"
+          },
+          "max": {
+            "qty": 130,
+            "units": "bpm"
+          }
+        },
+        "heartRateData": [
+          {
+            "date": "2026-05-03 08:01:00 +0800",
+            "Avg": 100,
+            "Min": 100,
+            "Max": 100,
+            "units": "bpm"
+          },
+          {
+            "date": "2026-05-03 07:59:40 +0800",
+            "Avg": 96,
+            "Min": 96,
+            "Max": 96,
+            "units": "bpm"
+          }
+        ],
+        "heartRateRecovery": [
+          {
+            "date": "2026-05-03 08:21:00 +0800",
+            "Avg": 104,
+            "units": "bpm"
+          }
+        ],
+        "effortScore": {
+          "qty": 3,
+          "units": "appleEffortScore"
+        },
+        "estimatedEffortScore": {
+          "qty": 2.5,
+          "units": "appleEffortScore"
+        },
+        "intensity": {
+          "qty": 0.6,
+          "units": "kcal/hr·kg"
+        },
+        "stepCadence": {
+          "qty": 96,
+          "units": "count/min"
+        },
+        "avgSpeed": {
+          "qty": 4.2,
+          "units": "km"
+        },
+        "maxSpeed": {
+          "qty": 6.1,
+          "units": "km"
+        },
+        "speed": {
+          "qty": 3.8,
+          "units": "km/hr"
+        },
+        "flightsClimbed": {
+          "qty": 2,
+          "units": "count"
+        },
+        "elevationUp": {
+          "qty": 8.5,
+          "units": "m"
+        },
+        "temperature": {
+          "qty": 21.5,
+          "units": "degC"
+        },
+        "humidity": {
+          "qty": 0.62,
+          "units": "count"
+        },
+        "isIndoor": false,
+        "location": "户外",
+        "metadata": {},
+        "splits": [
+          {
+            "distanceType": "distance",
+            "targetDistance": {
+              "qty": 1,
+              "units": "km"
+            },
+            "items": [
+              {
+                "index": 1,
+                "start": "2026-05-03 08:00:00 +0800",
+                "end": "2026-05-03 08:10:00 +0800",
+                "activeDuration": 600,
+                "elapsedDuration": 600,
+                "boundaryKind": "seaLevel",
+                "boundaryOrigin": "startOfTrack",
+                "isPartial": false,
+                "metrics": {
+                  "distance": {
+                    "qty": 0.6,
+                    "units": "km",
+                    "origin": "generated"
+                  },
+                  "paceKilometre": {
+                    "qty": 600,
+                    "units": "s/km",
+                    "origin": "generated"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "events": [
+          {
+            "index": 0,
+            "type": "pause",
+            "typeCode": 4,
+            "start": "2026-05-03 08:05:00 +0800",
+            "end": "2026-05-03 08:07:00 +0800",
+            "boundaryKind": "seaLevel",
+            "boundaryOrigin": "startOfTrack"
+          }
+        ],
+        "activities": [
+          {
+            "index": 0,
+            "id": "3",
+            "activityType": "步行",
+            "activityTypeCode": 52,
+            "start": "2026-05-03 08:00:00 +0800",
+            "end": "2026-05-03 08:20:00 +0800",
+            "duration": 1200,
+            "activeDuration": 1080,
+            "elapsedDuration": 1200,
+            "boundaryKind": "seaLevel",
+            "boundaryOrigin": "startOfTrack",
+            "configuration": {
+              "locationType": "outdoor",
+              "swimmingLocationType": null
+            },
+            "metrics": {
+              "activeEnergy": {
+                "qty": 209.2,
+                "units": "kJ",
+                "origin": "user"
+              },
+              "distance": {
+                "qty": 1.2,
+                "units": "km",
+                "origin": "coached"
+              },
+              "speed": {
+                "qty": 3.6,
+                "units": "km/hr",
+                "origin": "coached"
+              },
+              "paceKilometre": {
+                "qty": 1000,
+                "units": "s/km",
+                "origin": "coached"
+              },
+              "paceMile": {
+                "qty": 1609,
+                "units": "s/mi",
+                "origin": "coached"
+              },
+              "heartRateAverage": {
+                "qty": 100,
+                "units": "bpm",
+                "origin": "user",
+                "sampleCount": 20
+              },
+              "heartRateMinimum": {
+                "qty": 72,
+                "units": "bpm",
+                "origin": "user",
+                "sampleCount": 20
+              },
+              "heartRateMaximum": {
+                "qty": 130,
+                "units": "bpm",
+                "origin": "user",
+                "sampleCount": 20
+              }
+            }
+          }
+        ],
+        "segments": [
+          {
+            "index": 0,
+            "start": "2026-05-03 08:00:00 +0800",
+            "end": "2026-05-03 08:10:00 +0800",
+            "activeDuration": 600,
+            "elapsedDuration": 600,
+            "eventIndex": 0,
+            "boundaryKind": "seaLevel",
+            "boundaryOrigin": "startOfTrack",
+            "metrics": {
+              "distance": {
+                "qty": 0.6,
+                "units": "km",
+                "coveredDuration": 600,
+                "origin": "coached"
+              },
+              "heartRateAverage": {
+                "qty": 98,
+                "units": "bpm",
+                "sampleCount": 10,
+                "origin": "user"
+              },
+              "activeEnergy": {
+                "qty": 100,
+                "units": "kJ",
+                "coveredDuration": 600,
+                "origin": "user"
+              }
+            }
+          }
+        ],
+        "route": [
+          {
+            "timestamp": "2026-05-03 07:59:40 +0800",
+            "latitude": 30.25,
+            "longitude": 120.15,
+            "altitude": 4.5,
+            "speed": 1.2,
+            "course": 180,
+            "courseAccuracy": 5,
+            "horizontalAccuracy": 10,
+            "speedAccuracy": 1,
+            "verticalAccuracy": 3
+          },
+          {
+            "timestamp": "2026-05-03 08:00:00 +0800",
+            "latitude": 30.251,
+            "longitude": 120.151,
+            "altitude": 5,
+            "speed": 1.3
+          },
+          {
+            "timestamp": "2026-05-03 08:01:00 +0800",
+            "latitude": 0,
+            "longitude": 0,
+            "altitude": 5.5
+          },
+          {
+            "timestamp": "2026-05-03 08:02:00 +0800",
+            "latitude": 30.253,
+            "longitude": 120.153
+          }
+        ]
+      }
+    ],
+    "ecg": [
+      {
+        "start": "2026-05-03 09:16:15 +0800",
+        "end": "2026-05-03 09:16:45 +0800",
+        "classification": "窦性心律",
+        "averageHeartRate": 66,
+        "numberOfVoltageMeasurements": 3,
+        "samplingFrequency": 512,
+        "source": {
+          "name": "移动心电图房颤提示软件",
+          "identifier": "com.apple.health.ecg"
+        },
+        "voltageMeasurements": [
+          {
+            "date": 1777940175.1,
+            "voltage": -63.28,
+            "units": "mcV"
+          },
+          {
+            "date": 1777940175.2,
+            "voltage": -14.61,
+            "units": "mcV"
+          },
+          {
+            "date": 1777940175.3,
+            "voltage": 82.33,
+            "units": "mcV"
+          }
+        ]
+      }
+    ]
+  }
+}
