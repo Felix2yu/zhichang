@@ -162,6 +162,16 @@ func (r *Result) normalizeSleep(m Metric, home *time.Location) {
 				}
 			}
 
+			// 卧床时长：上游的 inBed 数值在真实导出里恒为 0（288/288 条），而
+			// inBedStart/inBedEnd 每条都有值。把 0 原样落库会让界面把「卧床 0 小时」
+			// 当成一次真实观测画出来；这里按起止差值补算。起止时刻也没有时才保持 NULL——
+			// 没有时刻就没有可算的依据，宁缺勿造。
+			if (sess.InBedHr == nil || *sess.InBedHr <= 0) && sess.InBedStart != nil && sess.InBedEnd != nil {
+				if d := sess.InBedEnd.Sub(*sess.InBedStart).Hours(); d > 0 && d <= 24 {
+					sess.InBedHr = &d
+				}
+			}
+
 			// 睡眠日归属：按「本夜」——入睡时刻（无则上床时刻）在 18:00 之前算前一晚。
 			// 两者都缺时只能退回 HAE 的日桶：那是「哪天」而不是「几点睡」（当地午夜），
 			// 按钟点判定会把整晚挪错一天，所以这条换算只对带真实时刻的记录生效。
@@ -350,7 +360,7 @@ func workoutMeta(w Workout) map[string]any {
 			m[k+"_unit"] = q.Units
 		}
 	}
-	put("basal_energy", w.BasalEnergy)
+	put("basal_energy", w.BasalEnergy.Quantity())
 	put("flights", w.Flights)
 	put("elevation_up", w.ElevationUp)
 	put("elevation_down", w.ElevationDown)

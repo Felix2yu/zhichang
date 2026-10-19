@@ -219,8 +219,9 @@ type Workout struct {
 
 	// —— 运动详情字段。缺失是常态（不同机型与版本给的范围差别很大），
 	// 且全部走容错类型：任何一个换成别的形态都不许让整份导出解析失败。
-	ActiveEnergy  Quantity `json:"activeEnergyBurned"`
-	BasalEnergy   Quantity `json:"basalEnergy"`
+	ActiveEnergy Quantity `json:"activeEnergyBurned"`
+	// BasalEnergy 新版是逐分钟数组、旧版是聚合对象，两种都要收（见 Totals）。
+	BasalEnergy   Totals   `json:"basalEnergy"`
 	AvgHeartRate  Quantity `json:"avgHeartRate"`
 	MaxHeartRate  Quantity `json:"maxHeartRate"`
 	EffortScore   Quantity `json:"effortScore"`
@@ -326,6 +327,80 @@ func (s *Series) UnmarshalJSON(p []byte) error {
 type Quantity struct {
 	Qty   Float  `json:"qty"`
 	Units string `json:"units"`
+}
+
+// TotalPoint 是累计量的一个逐点采样（新版导出把运动内的量按分钟摊开）。
+type TotalPoint struct {
+	Date  string `json:"date"`
+	Qty   Float  `json:"qty"`
+	Units string `json:"units"`
+}
+
+// Totals 是「上游可能给聚合对象、也可能给逐点数组」的累计量。
+//
+// 为什么需要一个专门的类型而不是让 Quantity 也认数组：Quantity 挂在平均心率、
+// 速度这类速率字段上，那些字段换成数组形态说明上游改了口径，求和会把「bpm」
+// 加成一个没有意义的数。只有本来就是累计量的字段才允许按数组求和，
+// 所以这条能力显式挂在需要的字段上，其余字段维持「数组=不认识=忽略」。
+//
+// 数组形态下 Qty 取逐点之和（累计量的日内口径就是求和），Units 取第一个带单位的点；
+// 逐点原样留在 Points 里，供序列表落库。
+type Totals struct {
+	Qty    Float
+	Units  string
+	Points []TotalPoint
+}
+
+// UnmarshalJSON 实现 json.Unmarshaler。认不出的形态一律忽略，绝不让整份导出失败。
+func (t *Totals) UnmarshalJSON(b []byte) error {
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil
+	}
+	switch trimmed[0] {
+	case '{':
+		var obj struct {
+			Qty   Float  `json:"qty"`
+			Units string `json:"units"`
+		}
+		if err := json.Unmarshal(trimmed, &obj); err != nil {
+			return nil
+		}
+		t.Qty, t.Units = obj.Qty, obj.Units
+	case '[':
+		var pts []TotalPoint
+		if err := json.Unmarshal(trimmed, &pts); err != nil {
+			return nil
+		}
+		var sum float64
+		for _, p := range pts {
+			if !p.Qty.Set {
+				continue
+			}
+			sum += p.Qty.Value
+			if t.Units == "" {
+				t.Units = p.Units
+			}
+			t.Points = append(t.Points, p)
+		}
+		if len(t.Points) > 0 {
+			t.Qty = Float{Value: sum, Set: true}
+		}
+	case 't', 'f':
+		return nil // 布尔：不是数量形态，忽略
+	default:
+		var num Float
+		if err := num.UnmarshalJSON(trimmed); err != nil {
+			return nil
+		}
+		t.Qty = num
+	}
+	return nil
+}
+
+// Quantity 收成聚合形态，供只关心总量的调用方使用。
+func (t Totals) Quantity() Quantity {
+	return Quantity{Qty: t.Qty, Units: t.Units}
 }
 
 // UnmarshalJSON 容错解析，接受三种形态：
