@@ -15,6 +15,7 @@ import (
 //   - 15360 个点必须原样往返（波形是这一节唯一的大数据，精度被截断也看不出来）；
 //   - 重复提交同一份导出既不能多出一行记录，也不能多出一条波形；
 //   - 「先只有记录、之后波形才到」时波形要能补上；
+//   - 列表的点数取自波形表的实际长度，不取本次提交的值（否则补了波形列表还是 0）。
 //   - 列表接口在空结果集上必须给 []，不能给 null。
 
 func openECGDB(t *testing.T) *DB {
@@ -174,6 +175,45 @@ func TestWriteECGFillsMissingWaveformLater(t *testing.T) {
 	}
 	if len(wf.Voltages) != 32 {
 		t.Fatalf("波形应被补上 32 点，实际 %d", len(wf.Voltages))
+	}
+	// 列表的点数要跟着波形走：记录行去重后不更新，留着 0 就会与上面这 32 点自相矛盾
+	rows, err = db.ECGRange(ctx, bare.LocalDate, bare.LocalDate)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("读列表失败: %v", err)
+	}
+	if rows[0].VoltageCount != 32 {
+		t.Fatalf("补上波形后列表点数应为 32，实际 %d", rows[0].VoltageCount)
+	}
+}
+
+// 遗留脏数据：早期实现只在插入记录时写 voltage_count，之后补上的波形从不回填，
+// 于是「波形有 32 点、列表显示 0 点」。重提交同一份导出要把它修回来，
+// 而且这次导出没带波形时不能反过来把已有点数抹成 0。
+func TestWriteECGSyncsStaleVoltageCount(t *testing.T) {
+	db := openECGDB(t)
+	ctx := context.Background()
+	start := time.Date(2026, 10, 13, 15, 16, 15, 0, time.UTC)
+
+	full := ecgRecordAt(start, 32)
+	if _, err := db.WriteECG(ctx, 0, []sample.ECGRecord{full}); err != nil {
+		t.Fatalf("写入失败: %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE ecg_records SET voltage_count = 0`); err != nil {
+		t.Fatalf("造脏点数失败: %v", err)
+	}
+
+	bare := ecgRecordAt(start, 0)
+	bare.Voltages = nil
+	bare.VoltageCount = 0
+	if n, err := db.WriteECG(ctx, 0, []sample.ECGRecord{bare}); err != nil || n != 0 {
+		t.Fatalf("重提交不该新增记录: n=%d err=%v", n, err)
+	}
+	rows, err := db.ECGRange(ctx, bare.LocalDate, bare.LocalDate)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("读列表失败: %v", err)
+	}
+	if rows[0].VoltageCount != 32 {
+		t.Fatalf("脏点数应由波形表修回 32，实际 %d", rows[0].VoltageCount)
 	}
 }
 
