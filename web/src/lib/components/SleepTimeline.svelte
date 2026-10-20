@@ -93,6 +93,8 @@
     // 叠加曲线：与分期泳道共用同一条本夜时间轴（两个 xAxis 用同一组 min/max/interval）
     const ov = overlay && overlay.points.length > 0 ? overlay : null;
     const ovColor = '#993556';
+    // 每个轴都要写自己所属的 grid：echarts 只在同 grid 的 x/y 配对上建直角坐标系，
+    // 缺省 gridIndex 是 0，写了 xAxis[1] 不写它，叠加曲线就没有坐标系可用。
     const axisBase = {
       type: 'value' as const,
       min: axis.lo,
@@ -139,9 +141,10 @@
       },
       xAxis: ov
         ? [
-            { ...axisBase, axisLabel: { show: false } },
+            { ...axisBase, gridIndex: 0, axisLabel: { show: false } },
             {
               ...axisBase,
+              gridIndex: 1,
               axisLabel: {
                 color: p.inkFaint,
                 fontSize: 10,
@@ -156,6 +159,7 @@
       yAxis: [
         {
           type: 'category',
+          gridIndex: 0,
           // 从上到下：清醒 → REM → 核心 → 深睡（与 Apple 一致）
           data: laneKeys,
           inverse: true,

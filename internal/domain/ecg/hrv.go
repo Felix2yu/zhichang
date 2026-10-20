@@ -22,8 +22,9 @@ type DetectResult struct {
 	Peaks []int
 	// RR 是与 Peaks 相邻配对的 RR 间期（秒），长度 = len(Peaks)-1。
 	RR []float64
-	// Rejected 是被 outlier 过滤剔掉的可疑峰数（漏检/误检的规模，
-	// 用于评估信号质量，不展示给用户）。
+	// Rejected 是被 outlier 过滤处理掉的脏数据规模：删掉的可疑峰
+	// （过短 RR 的制造者）+ 丢弃的过长间期（漏跳）。用于评估信号
+	// 质量，不展示给用户。
 	Rejected int
 }
 
@@ -109,66 +110,95 @@ func DetectRPeaks(voltages []float64, fs float64) DetectResult {
 		return out
 	}
 
-	// —— 阶段 6：RR 间期 outlier 过滤（迭代到稳定）——
-	rr := make([]float64, len(peaks)-1)
-	for i := 1; i < len(peaks); i++ {
-		rr[i-1] = float64(peaks[i]-peaks[i-1]) / fs
-	}
-	keep := make([]bool, len(rr))
-	for i := range keep {
-		keep[i] = true
-	}
-	for round := 0; round < 4; round++ {
-		live := make([]float64, 0, len(rr))
-		for i, ok := range keep {
-			if ok {
-				live = append(live, rr[i])
-			}
-		}
-		if len(live) < 2 {
-			break
-		}
-		med := median(live)
-		changed := false
-		for i, ok := range keep {
-			if !ok {
+	// —— 阶段 6a：短 RR 峰级剔除（晶格相等性仲裁）——
+	//
+	// 过短 RR（< 0.62×中位，约 160bpm 以下）说明配对的两端峰有一个是
+	// 假的——主力是 T 波：跟在真 R 峰后约 250-300ms，刚过 250ms 不应期，
+	// 积分能量又够过阈值。只删间期不删峰是不够的：假峰的另一侧往往接着
+	// 一条正常 RR，它会被「正常 RR 的端点」保下来，继续污染峰列表和
+	// 波形图上的标记（MIT-BIH 103 号实测：T 波假峰每秒一个，PPV 53%）。
+	//
+	// 删哪个？看晶格：真峰两侧的间期相等（都等于一个心动周期），假峰
+	// 两侧一大一小。所以比较两个候选峰各自「两侧间期之差」，差小的是
+	// 真峰，删另一个。这个判据刻意不用全局中位数——污染的间期分布会把
+	// 中位数拉偏（103 号里 T 波把中位 RR 压到 0.6s，真值 0.86s，按中位数
+	// 打分两种选项会打平），相等性只信局部邻峰，不受污染影响。
+	// （按积分幅度删也行不通：103 号 T 波能量高于 R 波，会级联删真峰，
+	// Se 从 98.9% 崩到 18.8%；一律删后者也不行：106 号 T 波离下一个 R
+	// 更近，删掉的会是真峰。）
+	//
+	// 首尾缺邻峰、或两边打平时（可能是真性心动过速），保留两端峰，
+	// 那条短间期交给下面的越界过滤从 RR 里剔——宁可漏一个指数，
+	// 不冤枉一个真峰。
+	work := peaks
+	removed := 0
+	if med := median(rrSec(peaks, fs)); med > 0 {
+		kept := make([]int, 0, len(peaks))
+		for i := 0; i < len(peaks); i++ {
+			p2 := peaks[i]
+			if len(kept) == 0 {
+				kept = append(kept, p2)
 				continue
 			}
-			// 0.62×中位 ≈ 160bpm 的下限之外视为过短（误检）；
-			// 1.8×中位 ≈ 33bpm 之外视为过长（漏检）。
-			if rr[i] < 0.62*med || rr[i] > 1.8*med {
-				keep[i] = false
-				changed = true
+			if float64(p2-kept[len(kept)-1])/fs >= 0.62*med {
+				kept = append(kept, p2)
+				continue
+			}
+			p1 := kept[len(kept)-1]
+			if len(kept) < 2 || i+1 >= len(peaks) {
+				kept = append(kept, p2) // 首尾无邻峰，无从判断
+				continue
+			}
+			p0, p3 := kept[len(kept)-2], peaks[i+1]
+			eq1 := (p1 - p0) - (p3 - p1) // p1 在晶格上 ⇒ 接近 0
+			eq2 := (p2 - p0) - (p3 - p2) // p2 在晶格上 ⇒ 接近 0
+			if eq1 < 0 {
+				eq1 = -eq1
+			}
+			if eq2 < 0 {
+				eq2 = -eq2
+			}
+			switch {
+			case eq1 < eq2:
+				removed++ // p1 在晶格上，p2 是假峰：不收录
+			case eq2 < eq1:
+				kept[len(kept)-1] = p2 // p2 在晶格上，删 p1
+				removed++
+			default:
+				kept = append(kept, p2) // 打平：都保留
 			}
 		}
-		if !changed {
-			break
-		}
+		work = kept
 	}
+	out.Peaks = work
 
-	// 采用集重建：一条 RR 存活，才谈得上两端的峰都是真峰。
-	// 取所有存活 RR 的端点并集——这比「按峰逐个判断」干净：
-	// 误检峰会制造一条过短 RR 把自己标出来，漏检会留下一条过长 RR，
-	// 两种脏数据只污染自己那条间期，不拖累相邻的真间期。
-	valid := make(map[int]bool, len(peaks))
-	for i, ok := range keep {
-		if !ok {
-			continue
+	// —— 阶段 6b：越界间期从 RR 里剔掉，不动峰 ——
+	// 过长（> 1.8×中位 ≈ 33bpm 以下）是漏跳；6a 打平保留下来的短间期
+	// 也在这里剔。漏检的真心跳不在峰列表里，没有可删的东西。
+	all := rrSec(work, fs)
+	if med := median(all); med > 0 {
+		for _, r := range all {
+			if r < 0.62*med || r > 1.8*med {
+				out.Rejected++
+				continue
+			}
+			out.RR = append(out.RR, r)
 		}
-		valid[peaks[i]] = true
-		valid[peaks[i+1]] = true
+	} else {
+		out.RR = append(out.RR, all...)
 	}
-	out.Peaks = make([]int, 0, len(valid))
-	for p := range valid {
-		out.Peaks = append(out.Peaks, p)
+	out.Rejected += removed
+	return out
+}
+
+// rrSec 由峰列算相邻间隔（秒）。
+func rrSec(peaks []int, fs float64) []float64 {
+	if len(peaks) < 2 || fs <= 0 {
+		return nil
 	}
-	sort.Ints(out.Peaks)
-	for i, ok := range keep {
-		if ok {
-			out.RR = append(out.RR, rr[i])
-		} else {
-			out.Rejected++
-		}
+	out := make([]float64, len(peaks)-1)
+	for i := 1; i < len(peaks); i++ {
+		out[i-1] = float64(peaks[i]-peaks[i-1]) / fs
 	}
 	return out
 }
