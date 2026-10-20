@@ -159,6 +159,6 @@
 {:else}
   <div bind:this={el} style="height:{height}px;width:100%;" class="mt-2"></div>
   <div class="mt-1 text-[11px] text-[var(--color-ink-500)]">
-    点击圆点可查看该次测量的心电图波形；非绿色圆点表示判定异常
+    点击圆点会在下方记录列表里就地展开该次测量的心电图波形；非绿色圆点表示判定异常
   </div>
 {/if}
