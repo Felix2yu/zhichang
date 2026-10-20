@@ -225,7 +225,7 @@
         />
       {:else}
         <div class="py-8 text-center text-[13px] text-[var(--color-ink-500)]">
-          这条记录没有波形数据（本次导出只带了判定与心率）
+          这条记录没有波形数据（导出没给波形，或波形有点缺电压、整段没入库）
         </div>
       {/if}
     </div>

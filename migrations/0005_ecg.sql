@@ -14,8 +14,10 @@ CREATE TABLE IF NOT EXISTS ecg_records (
     classification_code text NOT NULL DEFAULT 'unknown',
     average_heart_rate  double precision,
     sampling_frequency  integer,
-    -- 上游声明的波形点数（numberOfVoltageMeasurements）。本表只落元数据、不存波形，
-    -- 它用于列表页显示，以及核对导出是否被截断。
+    -- 实际入库的波形点数：由 ecg_voltages 里那段数组的长度回算，不是上游声明的
+    -- numberOfVoltageMeasurements（那个字段只被解析，不参与落库，也不用来核对截断——
+    -- 数组被截断时按索引推的时轴依然自洽，本地看不出破绽，而波形去重后重导也补不进来，
+    -- 标出「被截断」没有可行动的出路）。本表只落元数据、不存波形。
     voltage_count       integer NOT NULL DEFAULT 0,
     source              text NOT NULL DEFAULT '',
     local_date          date NOT NULL,

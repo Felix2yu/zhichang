@@ -19,6 +19,8 @@ import (
 //
 // 记录与波形分开两条语句，是因为波形可能整段缺失（见 collectVoltages）：
 // 判定是这条记录最有价值的部分，波形没有也该把记录留下。
+// 每条记录写完都按 ecg_voltages 的实际长度回算一次 voltage_count，
+// 列表页的「点数」与波形头部的点数因此不可能各说各话。
 func (db *DB) WriteECG(ctx context.Context, runID int64, list []sample.ECGRecord) (int, error) {
 	if len(list) == 0 {
 		return 0, nil
@@ -32,6 +34,16 @@ func (db *DB) WriteECG(ctx context.Context, runID int64, list []sample.ECGRecord
 	const selectRecord = `SELECT id FROM ecg_records WHERE start_time = $1 AND source = $2`
 	const insertVoltages = `INSERT INTO ecg_voltages (ecg_id, unit, voltages) VALUES ($1,$2,$3)
 		ON CONFLICT (ecg_id) DO NOTHING`
+	// 点数以波形表为准，而不是本次提交的值：记录行按 (start_time, source) 去重后不再更新，
+	// 「先只有判定、之后波形才到」时列表会停在 0，而点开同一行的波形却有 15360 点；
+	// 反过来，某次导出没带波形也不能把已有点数抹成 0——波形还在。
+	// want 刻意写成无表的常量 SELECT：这样没有波形行时它仍返回一行 0，
+	// 若改成 FROM ecg_voltages，空集会让整条 UPDATE 静默跳过，脏点数就再也修不回来。
+	const syncVoltageCount = `WITH want AS (
+			SELECT COALESCE((SELECT array_length(voltages, 1) FROM ecg_voltages WHERE ecg_id = $1), 0)::int AS n
+		)
+		UPDATE ecg_records r SET voltage_count = w.n FROM want w
+		WHERE r.id = $1 AND r.voltage_count <> w.n`
 
 	inserted := 0
 	for _, r := range list {
@@ -53,10 +65,12 @@ func (db *DB) WriteECG(ctx context.Context, runID int64, list []sample.ECGRecord
 		default:
 			return inserted, err
 		}
-		if len(r.Voltages) == 0 {
-			continue
+		if len(r.Voltages) > 0 {
+			if _, err := db.Pool.Exec(ctx, insertVoltages, id, r.VoltageUnit, r.Voltages); err != nil {
+				return inserted, err
+			}
 		}
-		if _, err := db.Pool.Exec(ctx, insertVoltages, id, r.VoltageUnit, r.Voltages); err != nil {
+		if _, err := db.Pool.Exec(ctx, syncVoltageCount, id); err != nil {
 			return inserted, err
 		}
 	}

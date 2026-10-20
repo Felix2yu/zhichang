@@ -149,7 +149,8 @@ type ECGRecord struct {
 	ClassificationCode ecg.Code
 	AverageHeartRate   *float64
 	SamplingFrequency  *int
-	// VoltageCount 是实际拿到的点数；Voltages 为空时它说明上游本就没给波形。
+	// VoltageCount 恒等于 len(Voltages)——上游声明的 numberOfVoltageMeasurements 不参与落库。
+	// 所以它是 0 有两种来路：上游本就没给波形，或某点缺电压把整段判掉了（见 collectVoltages）。
 	VoltageCount int
 	VoltageUnit  string
 	// Voltages 按时间升序；第 i 点对应 StartTime + i/SamplingFrequency。
