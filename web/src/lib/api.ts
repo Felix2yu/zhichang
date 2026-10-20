@@ -281,6 +281,124 @@ export type EcgWaveform = {
   duration_sec: number;
   /** 按时间升序的电压值，第 i 点即 start + i/采样率 */
   voltages: number[];
+  /** R 峰下标（服务端检测）；空数组 = 一个都没检出 */
+  peaks?: number[];
+};
+
+/** 一条心电测量在分析页上的一行（/api/ecg/analysis） */
+export type EcgAnalysisRecord = {
+  id: number;
+  /** 本地日期 YYYY-MM-DD */
+  date: string;
+  /** 本地时刻 HH:MM */
+  clock: string;
+  code: string;
+  /** 归一措辞；known=false 时为上游原文 */
+  label: string;
+  known: boolean;
+  /** 平均心率（bpm）：上游值，缺失时用波形检测值补 */
+  avg_hr: number | null;
+  /** 检出心跳数；无波形时为 null */
+  beats: number | null;
+  /** 心率变异性指数 0-100；信号质量不佳时为 null */
+  hrv: number | null;
+  stress: number | null;
+  fatigue: number | null;
+  /** 信号质量：good | fair | poor | none（无波形） */
+  quality: string;
+  /** 节律：regular | mild | irregular */
+  rhythm: string;
+};
+
+/** 一个 0-100 指数的区间汇总 */
+export type EcgIndexValue = {
+  /** 区间均值 */
+  score: number | null;
+  /** 最近一次 */
+  latest: number | null;
+  /** 档位文案；无数据时为空串 */
+  level: string;
+  /** 「n 次有效测量」 */
+  basis: string;
+};
+
+/** 心脏疾病风险关注度（规则引擎，触发项透明展示） */
+export type EcgRiskValue = {
+  score: number | null;
+  level: string;
+  drivers: string[];
+  basis: string;
+};
+
+export type EcgAnalysisSummary = {
+  count: number;
+  measured_days: number;
+  /** 有有效指数（信号质量过关）的次数 */
+  with_metrics: number;
+  avg_hr: number | null;
+  min_hr: number | null;
+  max_hr: number | null;
+  latest_date: string;
+  latest_clock: string;
+  dominant_code: string;
+  dominant_label: string;
+  dominant_ratio: number;
+  /** 房颤/高心率/测不准/未识别合计 */
+  abnormal_count: number;
+};
+
+/** 判定分布的一项 */
+export type EcgDistItem = {
+  code: string;
+  label: string;
+  known: boolean;
+  count: number;
+  ratio: number;
+};
+
+/** 一个时间窗的统计量（对比视图的一行） */
+export type EcgWindowStats = {
+  count: number;
+  avg_hr: number | null;
+  sinus_ratio: number | null;
+  hrv: number | null;
+  stress: number | null;
+  fatigue: number | null;
+  risk: number | null;
+};
+
+/** 本周期减上一周期的差；nil = 有一侧没数据 */
+export type EcgDelta = {
+  avg_hr: number | null;
+  sinus_ratio: number | null;
+  hrv: number | null;
+  stress: number | null;
+  fatigue: number | null;
+  risk: number | null;
+};
+
+export type EcgComparison = {
+  window_days: number;
+  current: EcgWindowStats | null;
+  previous: EcgWindowStats | null;
+  delta: EcgDelta | null;
+};
+
+/** 心电分析视图（/api/ecg/analysis） */
+export type EcgAnalysis = {
+  from: string;
+  to: string;
+  /** 按时间升序 */
+  records: EcgAnalysisRecord[];
+  summary: EcgAnalysisSummary;
+  indices: {
+    hrv: EcgIndexValue;
+    stress: EcgIndexValue;
+    fatigue: EcgIndexValue;
+    risk: EcgRiskValue;
+  };
+  distribution: EcgDistItem[];
+  comparison: EcgComparison;
 };
 
 export type SourceRow = {
@@ -502,6 +620,9 @@ export const api = {
       `/api/ecg?from=${from}&to=${to}`
     );
     return { ...r, records: arr(r.records) };
+  },
+  ecgAnalysis: async (from: string, to: string) => {
+    return get<EcgAnalysis>(`/api/ecg/analysis?from=${from}&to=${to}`);
   },
   ecgWaveform: async (id: number) => {
     const r = await get<EcgWaveform>(`/api/ecg/waveform?id=${id}`);

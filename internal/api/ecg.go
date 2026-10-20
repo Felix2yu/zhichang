@@ -51,6 +51,10 @@ func (d *Dashboard) ecgRecords(w http.ResponseWriter, r *http.Request) {
 //
 // 单列一条接口而不是塞进列表里：一次测量 15360 个点（约 120KB），
 // 而列表页只是给人扫一眼「哪天测了、结论是什么」。
+//
+// 顺带算出 R 峰下标一起返回：前端要在波形上标出每次心跳，
+// 而检测必须用与统计分析完全相同的实现（domain/ecg）——
+// 若前端自己检一遍，图上的标记与卡片里的指数就会是两套算法。
 func (d *Dashboard) ecgWaveform(w http.ResponseWriter, r *http.Request) {
 	raw := strings.TrimSpace(r.URL.Query().Get("id"))
 	id, err := strconv.ParseInt(raw, 10, 64)
@@ -66,6 +70,13 @@ func (d *Dashboard) ecgWaveform(w http.ResponseWriter, r *http.Request) {
 	if wf == nil {
 		WriteError(w, http.StatusNotFound, "心电图记录不存在")
 		return
+	}
+	if wf.SamplingFrequency != nil && *wf.SamplingFrequency > 0 && len(wf.Voltages) > 0 {
+		wf.Peaks = ecg.DetectRPeaks(wf.Voltages, float64(*wf.SamplingFrequency)).Peaks
+	}
+	if wf.Peaks == nil {
+		// nil 会被编成 JSON null，前端 .length 直接抛 TypeError
+		wf.Peaks = []int{}
 	}
 	WriteJSON(w, http.StatusOK, wf)
 }

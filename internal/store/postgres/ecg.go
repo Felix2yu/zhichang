@@ -77,6 +77,73 @@ func (db *DB) WriteECG(ctx context.Context, runID int64, list []sample.ECGRecord
 	return inserted, nil
 }
 
+// ECGRecordFull 是「记录 + 波形」的一整行，只服务分析端点。
+//
+// 为什么不给列表端点用：列表只需要元信息，带上波形等于每条多背 120KB。
+// 分析端点反过来必须连波形一起读——HRV 全部指标都从波形算出，
+// 没有波形就没有任何指数可言。所以两条端点、两种行，别互相凑合。
+type ECGRecordFull struct {
+	ECGRecordRow
+	Unit     string
+	Voltages []float64
+}
+
+// ECGRangeFull 读取区间内的记录并 LEFT JOIN 波形，按时间升序。
+//
+// 升序而不是列表端点的降序：分析端点要给前端画趋势图，
+// 升序画完即所得，省得前端再翻一次。limit 是保护上限——
+// 区间再长也只分析最近 limit 条（自托管单用户一年也就两三百条，
+// 真到了上限说明使用方式变了，该考虑落库预计算而不是硬算）。
+func (db *DB) ECGRangeFull(ctx context.Context, from, to string, limit int) ([]ECGRecordFull, error) {
+	fd, err := parseDate(from)
+	if err != nil {
+		return nil, err
+	}
+	td, err := parseDate(to)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 300
+	}
+	rows, err := db.Pool.Query(ctx, `SELECT r.id, r.local_date, r.start_time, r.end_time,
+		EXTRACT(EPOCH FROM (r.end_time - r.start_time))::float8,
+		r.classification, r.classification_code, r.average_heart_rate, r.sampling_frequency,
+		r.voltage_count, r.source, r.tz_offset_min,
+		COALESCE(v.unit, ''), v.voltages
+		FROM ecg_records r LEFT JOIN ecg_voltages v ON v.ecg_id = r.id
+		WHERE r.local_date BETWEEN $1 AND $2
+		ORDER BY r.start_time DESC LIMIT $3`, fd, td, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ECGRecordFull, 0, 16)
+	for rows.Next() {
+		var r ECGRecordFull
+		var ld pgtype.Date
+		var st, et time.Time
+		if err := rows.Scan(&r.ID, &ld, &st, &et, &r.DurationSec, &r.Classification,
+			&r.ClassificationCode, &r.AverageHeartRate, &r.SamplingFrequency,
+			&r.VoltageCount, &r.Source, &r.TZOffsetMin, &r.Unit, &r.Voltages); err != nil {
+			return nil, err
+		}
+		r.LocalDate = ld.Time.Format("2006-01-02")
+		r.Start = st.UTC().Format(time.RFC3339)
+		r.End = et.UTC().Format(time.RFC3339)
+		if r.Voltages == nil {
+			// LEFT JOIN 无波形行时是 NULL，转成空切片免得调用方踩 nil
+			r.Voltages = []float64{}
+		}
+		out = append(out, r)
+	}
+	// 反转为升序：SQL 里 DESC 是为了拿「最近 limit 条」，返回给调用方要按时间正序
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out, rows.Err()
+}
+
 // ECGRecordRow 是心电记录列表的一行。刻意不含波形：一次测量 15360 个点，
 // 列表页没有画它们的地方，带上只会把响应撑到几百 KB。
 type ECGRecordRow struct {
@@ -141,6 +208,9 @@ type ECGWaveform struct {
 	// 也就是这条波形在图上真正铺开的时间跨度。
 	DurationSec float64   `json:"duration_sec"`
 	Voltages    []float64 `json:"voltages"`
+	// Peaks 是 R 峰下标，由 API 层检测后填入（store 只存取，不算）。
+	// 前端拿它在波形上标出每次心跳；空数组表示一个都没检出。
+	Peaks []int `json:"peaks"`
 }
 
 // ECGVoltages 读取一条记录的波形。记录不存在时返回 nil, nil；

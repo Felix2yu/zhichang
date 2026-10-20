@@ -10,10 +10,12 @@
     unit?: string;
     /** 采样率（Hz）；缺省时横轴退化成「第 n 个采样点」 */
     samplingFrequency?: number | null;
+    /** R 峰下标（服务端从同一条波形算出）；画成竖直标线，标出每次心跳 */
+    peaks?: number[];
     height?: number;
   };
 
-  let { voltages, unit = '', samplingFrequency = null, height = 220 }: Props = $props();
+  let { voltages, unit = '', samplingFrequency = null, peaks = [], height = 220 }: Props = $props();
 
   let el: HTMLDivElement | undefined = $state();
   let chart: echarts.ECharts | undefined;
@@ -105,13 +107,27 @@
           // 但一次绘制从 15360 个点降到几百个。
           sampling: 'lttb',
           lineStyle: { width: 1, color: dataColor('#0f6e56') },
-          // 基线：心电图判读靠它看抬高/压低
+          // 基线：心电图判读靠它看抬高/压低。
+          // R 峰标线与基线共用一条 markLine（数据项各自带样式）——
+          // 写成两个 markLine 键会让后者把前者覆盖掉，基线就丢了。
           markLine: {
             silent: true,
             symbol: 'none',
-            lineStyle: { type: 'dashed', color: p.line, width: 1 },
-            label: { show: false },
-            data: [{ yAxis: 0 }]
+            animation: false,
+            data: [
+              {
+                yAxis: 0,
+                lineStyle: { type: 'dashed', color: p.line, width: 1 },
+                label: { show: false }
+              },
+              // R 峰标线：每次心跳一条。服务端给的是波形下标，
+              // 这里换算成与横轴一致的秒（或点序号）。
+              ...peaks.map((i) => ({
+                xAxis: fs ? i / fs : i,
+                lineStyle: { color: p.warn, width: 1, opacity: 0.75 },
+                label: { show: false }
+              }))
+            ]
           }
         }
       ]
