@@ -4,6 +4,7 @@
   import { dataColor, palette } from '#lib/theme.svelte';
   import { formatDuration } from '#lib/prefs.svelte';
   import RouteMap from './RouteMap.svelte';
+  import ErrorBanner from '#lib/components/ui/ErrorBanner.svelte';
 
   /** 一次运动的详情：摘要 + 轨迹 + 逐点心率。 */
   type Props = {
@@ -158,11 +159,7 @@
   </div>
 
   {#if error}
-    <div
-      class="border-t border-[var(--color-line)] px-4 py-3 text-[13px] text-[var(--color-danger)]"
-    >
-      {error}
-    </div>
+    <ErrorBanner {error} bare class="border-t border-[var(--color-line)] px-4 py-3" />
   {:else if loading}
     <div
       class="border-t border-[var(--color-line)] px-4 py-6 text-[13px] text-[var(--color-ink-500)]"
