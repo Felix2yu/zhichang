@@ -20,6 +20,12 @@
   } from '#lib/prefs.svelte';
   import { theme, type ThemePreference } from '#lib/theme.svelte';
   import Segmented from '#lib/components/Segmented.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Button from '#lib/components/ui/Button.svelte';
+  import CardHeader from '#lib/components/ui/CardHeader.svelte';
+  import ErrorBanner from '#lib/components/ui/ErrorBanner.svelte';
+  import PageHeader from '#lib/components/ui/PageHeader.svelte';
+  import InfoNote from '#lib/components/ui/InfoNote.svelte';
 
   // 设置页分两类落点：口味存本机 localStorage，目标存服务端 goals / app_settings 表。
   // 之所以要分：睡眠目标是数据口径，换台设备也该是同一个目标；而暗不暗、区间默认多长
@@ -228,18 +234,18 @@
 <svelte:head>
   <title>设置 · 知常</title>
 </svelte:head>
-<h1 class="mb-1 text-[15px] font-medium">设置</h1>
-<div class="mb-4 text-[11px] text-[var(--color-ink-500)]">
-  显示相关的偏好存在本机浏览器，换设备要重设；睡眠目标存在服务端，各端一致。
-</div>
+<PageHeader class="mb-1" noteClass="mb-4 text-[11px]">
+  设置
+  {#snippet note()}
+    显示相关的偏好存在本机浏览器，换设备要重设；睡眠目标存在服务端，各端一致。
+  {/snippet}
+</PageHeader>
 
-{#if error}
-  <div class="card mb-3 px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
-{/if}
+<ErrorBanner {error} class="mb-3" />
 
 <!-- 1. 外观 -->
-<div class="card mb-3 p-4">
-  <div class="mb-2.5 text-[13px] font-medium">外观</div>
+<Card class="mb-3">
+  <CardHeader class="mb-2.5">外观</CardHeader>
   <div class="flex flex-wrap items-center gap-3">
     <span class="text-[12px] text-[var(--color-ink-500)]">显示模式</span>
     <Segmented
@@ -257,13 +263,11 @@
       </span>
     {/if}
   </div>
-  <div class="mt-2 text-[11px] leading-relaxed text-[var(--color-ink-500)]/80">
-    图表、分期色与档位色会一起调整亮度，色相与相互次序保持不变。
-  </div>
-</div>
+  <InfoNote class="mt-2">图表、分期色与档位色会一起调整亮度，色相与相互次序保持不变。</InfoNote>
+</Card>
 
 <!-- 2. 睡眠目标 -->
-<div class="card mb-3 p-4">
+<Card class="mb-3">
   <div class="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
     <span class="text-[13px] font-medium">睡眠目标</span>
     <span class="text-[11px] text-[var(--color-ink-500)]">
@@ -284,17 +288,15 @@
         bind:value={durDraft}
       />
       <span class="text-[12px] text-[var(--color-ink-500)]">小时 / 晚</span>
-      <button
-        class="rounded-md border border-[var(--color-line)] px-2.5 py-1 text-[11px] text-[var(--color-brand)] disabled:opacity-40"
+      <Button
+        variant="brand"
+        busy={busy === '睡眠时长目标'}
+        busyText="保存中…"
         disabled={busy !== ''}
-        onclick={saveDuration}>{busy === '睡眠时长目标' ? '保存中…' : '保存'}</button
+        onclick={saveDuration}>保存</Button
       >
       {#if sleepGoal}
-        <button
-          class="rounded-md px-2 py-1 text-[11px] text-[var(--color-ink-500)] hover:bg-[var(--color-surface-3)] disabled:opacity-40"
-          disabled={busy !== ''}
-          onclick={clearDuration}>清除</button
-        >
+        <Button variant="ghost" disabled={busy !== ''} onclick={clearDuration}>清除</Button>
       {/if}
     </div>
 
@@ -306,22 +308,20 @@
         placeholder="22:30"
         bind:value={bedDraft}
       />
-      <button
-        class="rounded-md border border-[var(--color-line)] px-2.5 py-1 text-[11px] text-[var(--color-brand)] disabled:opacity-40"
+      <Button
+        variant="brand"
+        busy={busy === '预期入睡时间'}
+        busyText="保存中…"
         disabled={busy !== ''}
-        onclick={saveBedtime}>{busy === '预期入睡时间' ? '保存中…' : '保存'}</button
+        onclick={saveBedtime}>保存</Button
       >
       {#if bedtime}
-        <button
-          class="rounded-md px-2 py-1 text-[11px] text-[var(--color-ink-500)] hover:bg-[var(--color-surface-3)] disabled:opacity-40"
-          disabled={busy !== ''}
-          onclick={clearBedtime}>清除</button
-        >
+        <Button variant="ghost" disabled={busy !== ''} onclick={clearBedtime}>清除</Button>
       {/if}
     </div>
   </div>
 
-  <div class="mt-2 text-[11px] leading-relaxed text-[var(--color-ink-500)]/80">
+  <InfoNote class="mt-2">
     {#if sleepGoal}
       当前时长目标 {formatDurationHours(sleepGoal.target)} ·
     {:else}
@@ -332,7 +332,7 @@
     {:else}
       未设入睡目标，「就寝」项沿用最近 13 晚入睡中位数（Apple 口径）
     {/if}
-  </div>
+  </InfoNote>
 
   <div class="mt-3 flex flex-wrap items-baseline gap-2">
     <label class="flex items-baseline gap-1.5 text-[12px] text-[var(--color-ink-500)]">
@@ -344,17 +344,15 @@
         bind:value={token}
       />
     </label>
-    <span class="text-[11px] leading-relaxed text-[var(--color-ink-500)]/80">
-      令牌由服务端环境变量配置，只留在本次标签页内；未配置时保存会提示只读。
-    </span>
+    <InfoNote>令牌由服务端环境变量配置，只留在本次标签页内；未配置时保存会提示只读。</InfoNote>
   </div>
 
-  {#if msg}<div class="mt-2 text-[11px] text-[var(--color-danger)]">{msg}</div>{/if}
-</div>
+  <ErrorBanner error={msg} bare size="sm" class="mt-2" />
+</Card>
 
 <!-- 3. 数据展示 -->
-<div class="card mb-3 p-4">
-  <div class="mb-2.5 text-[13px] font-medium">数据展示</div>
+<Card class="mb-3">
+  <CardHeader class="mb-2.5">数据展示</CardHeader>
 
   <div class="mb-3 flex flex-wrap items-center gap-3">
     <span class="w-24 shrink-0 text-[12px] text-[var(--color-ink-500)]">默认区间</span>
@@ -392,15 +390,15 @@
     >
   </div>
 
-  <div class="mt-2 text-[11px] leading-relaxed text-[var(--color-ink-500)]/80">
+  <InfoNote class="mt-2">
     数值精度跟随指标单位，不提供开关：同一个指标在前后端只能用一套小数位。
     概览的关注指标、趋势的叠加指标仍在各自页面就地选择。
-  </div>
-</div>
+  </InfoNote>
+</Card>
 
 <!-- 4. 数据与隐私 -->
-<div class="card mb-3 p-4">
-  <div class="mb-2.5 text-[13px] font-medium">数据与隐私</div>
+<Card class="mb-3">
+  <CardHeader class="mb-2.5">数据与隐私</CardHeader>
 
   <div class="mb-3 flex flex-wrap items-center gap-3">
     <span class="w-24 shrink-0 text-[12px] text-[var(--color-ink-500)]">导出天级数据</span>
@@ -413,10 +411,12 @@
       ]}
       onchange={(v) => (exportDays = v)}
     />
-    <button
-      class="rounded-md border border-[var(--color-line)] px-2.5 py-1 text-[11px] text-[var(--color-brand)] disabled:opacity-40"
+    <Button
+      variant="brand"
+      busy={exportBusy}
+      busyText="导出中…"
       disabled={exportBusy || defs.length === 0}
-      onclick={exportCsv}>{exportBusy ? '导出中…' : '下载 CSV'}</button
+      onclick={exportCsv}>下载 CSV</Button
     >
     <span class="text-[11px] text-[var(--color-ink-400)]">一行一天，只读接口，不需要令牌</span>
   </div>
@@ -424,14 +424,12 @@
 
   <div class="flex flex-wrap items-center gap-3">
     <span class="w-24 shrink-0 text-[12px] text-[var(--color-ink-500)]">本机偏好</span>
-    <button
-      class="rounded-md border px-2.5 py-1 text-[11px] disabled:opacity-40 {resetArmed
-        ? 'border-[var(--color-danger)] text-[var(--color-danger)]'
-        : 'border-[var(--color-line)] text-[var(--color-ink-700)]'}"
+    <Button
+      variant={resetArmed ? 'danger' : 'outline'}
       onclick={() => (resetArmed ? doReset() : (resetArmed = true))}
     >
       {resetArmed ? '确认恢复默认？' : '恢复默认'}
-    </button>
+    </Button>
     <span class="text-[11px] text-[var(--color-ink-400)]">
       {resetArmed
         ? '只清显示偏好（外观、区间、时长格式、已选指标），服务端目标不受影响'
@@ -439,15 +437,15 @@
     </span>
   </div>
 
-  <div class="mt-2 text-[11px] leading-relaxed text-[var(--color-ink-500)]/80">
+  <InfoNote class="mt-2">
     原始健康数据由手机自动同步写入，本页不提供删除：删了没法重新生成，
     误删的代价远高于一个按钮带来的方便。
-  </div>
-</div>
+  </InfoNote>
+</Card>
 
 <!-- 5. 关于 -->
-<div class="card p-4">
-  <div class="mb-2.5 text-[13px] font-medium">关于</div>
+<Card>
+  <CardHeader class="mb-2.5">关于</CardHeader>
   {#if loading}
     <div class="text-[12px] text-[var(--color-ink-500)]">加载中…</div>
   {:else}
@@ -465,11 +463,11 @@
         <dd class="num">{goals.length} 项</dd>
       </div>
     </dl>
-    <div class="mt-2 text-[11px] leading-relaxed text-[var(--color-ink-500)]/80">
+    <InfoNote class="mt-2">
       指标口径、跨来源收敛与同步水位在<a
         href={resolve('/sync')}
         class="text-[var(--color-brand)] hover:underline">数据源页</a
       >看； 时区与接入令牌属于部署配置，由环境变量决定，不在本页改。
-    </div>
+    </InfoNote>
   {/if}
-</div>
+</Card>
