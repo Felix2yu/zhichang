@@ -4,7 +4,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { api, shiftDays, todayStr, type DailyPoint, type MetricDef } from '#lib/api';
-  import { isDate, lastDays, spanDays, type Range } from '#lib/range';
+  import { isDate, lastDays, matchPreset, spanDays, type Range } from '#lib/range';
   import { METRIC_GROUPS, groupOf, unitDigits, type MetricGroup } from '#lib/metric-groups';
   import { prefs, TREND_SELECTED_KEY } from '#lib/prefs.svelte';
   import {
@@ -187,6 +187,11 @@
   // —— URL 是这一屏的真相：链接可直接分享，刷新可还原 ——
   let ready = $state(false);
   let urlSelected: string[] | null = null;
+  /** 选择是否由用户/链接显式指定：仅这种情况才把整串指标写进 URL。
+   *  否则每次打开页面都会把自动挑选的默认项塞进地址栏，链接又长又没有信息量。 */
+  let pinned = $state(false);
+  /** 天数预设：命中时 URL 写 days=N，比一对日期短，也和区间控件同一套口径 */
+  const URL_PRESETS = [7, 30, 90, 365];
 
   function readUrl() {
     const q = page.url.searchParams;
@@ -198,7 +203,10 @@
       if (d === 7 || d === 30 || d === 90 || d === 365) range = lastDays(d);
     }
     const m = q.get('m');
-    if (m) urlSelected = m.split(',').filter(Boolean);
+    if (m) {
+      urlSelected = m.split(',').filter(Boolean);
+      pinned = true;
+    }
     const v = q.get('v');
     if (v === 'grid' || v === 'list' || v === 'focus') view = v;
     const fm = q.get('f');
@@ -218,23 +226,46 @@
 
   $effect(() => {
     if (!ready) return;
-    const u = new URL(page.url.href);
-    if (selected.length > 0) u.searchParams.set('m', selected.join(','));
-    else u.searchParams.delete('m');
-    u.searchParams.set('from', range.from);
-    u.searchParams.set('to', range.to);
-    u.searchParams.delete('days');
+    // SvelteKit 3 的 shallow 导航只更新 page.shallow.url，page.url 仍停在整页加载时的地址；
+    // 拿 page.url 做「当前地址」会让下一次比较永远对着旧值，返回网格时清不掉 v/f。
+    const current = page.shallow?.url ?? page.url;
+    const u = new URL(current.href);
+    if (pinned) {
+      if (selected.length > 0) u.searchParams.set('m', selected.join(','));
+      else u.searchParams.delete('m');
+    } else {
+      u.searchParams.delete('m');
+    }
+    const preset = matchPreset(range, URL_PRESETS);
+    const fallback = lastDays(prefs.rangeDays);
+    if (range.from === fallback.from && range.to === fallback.to) {
+      // 默认区间不写进 URL：地址栏只承载「与平时不一样」的状态
+      u.searchParams.delete('from');
+      u.searchParams.delete('to');
+      u.searchParams.delete('days');
+    } else if (preset !== undefined) {
+      u.searchParams.set('days', String(preset));
+      u.searchParams.delete('from');
+      u.searchParams.delete('to');
+    } else {
+      u.searchParams.set('from', range.from);
+      u.searchParams.set('to', range.to);
+      u.searchParams.delete('days');
+    }
     if (view === 'focus' && focusMetric) {
       u.searchParams.set('v', 'focus');
       u.searchParams.set('f', focusMetric);
+    } else if (view === 'list') {
+      // 网格是默认视图，不写 v；返回网格时地址栏自然缩短
+      u.searchParams.set('v', 'list');
+      u.searchParams.delete('f');
     } else {
-      u.searchParams.set('v', view === 'focus' ? 'grid' : view);
+      u.searchParams.delete('v');
       u.searchParams.delete('f');
     }
-    // 先看再写：这个 effect 自己读 page.url，goto 又会改 page.url，
-    // 不加相等判断就会「写 URL → 依赖变化 → 再写一次」地空转
+    // 先看再写：goto 会改当前地址，不比较就会「写 URL → 依赖变化 → 再写一次」地空转
     const next = `${u.pathname}${u.search}`;
-    const cur = `${page.url.pathname}${page.url.search}`;
+    const cur = `${current.pathname}${current.search}`;
     if (next === cur) return;
     // eslint-disable-next-line svelte/no-navigation-without-resolve
     void goto(next, { replace: true, shallow: true });
@@ -406,6 +437,7 @@
   }
 
   function onSelectChange(next: string[]) {
+    pinned = true;
     selected = next;
     scheduleLoad();
   }

@@ -175,7 +175,9 @@ xAxis: { type: 'category', data: points.map((p) => p.date.slice(5)), ... }
 4. **批量**：每组一个「全选本组」；分区 tab 上给「全选本区」；顶部「清空」。
 5. **常用持久化**：选择写入 `localStorage`（新增键 `zhichang.trend-selected`，
    在 `prefs.svelte.ts` 的 `LOCAL_PREF_KEYS` 里登记，让「重置本机偏好」能一并清掉）。
-6. **URL 同步**：`?m=step_count,body_mass&r=90&v=list`，可分享、可后退。
+6. **URL 同步**：`?m=step_count,body_mass&days=90&v=list`，可分享、可后退。
+   默认选择（自动挑选或 localStorage 里的既有选择）与默认区间不写进地址栏，
+   只有用户显式改过选择、区间或视图时才出现参数，避免链接变长。
    （睡眠页已有先例 `sleep/+page.svelte:344-348`。）
 7. **默认选择**：不再硬编码 `['step_count','heart_rate']`，改为
    「日更分区里活跃度最高的前 6 项」——有数据才算数。
