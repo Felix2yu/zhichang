@@ -25,6 +25,12 @@
   import { cadenceText, tierOfPoints } from '#lib/metric-tiers';
   import type { EmptyKind } from '#lib/metric-render';
   import RangePicker from '#lib/components/RangePicker.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Chip from '#lib/components/ui/Chip.svelte';
+  import EmptyState from '#lib/components/ui/EmptyState.svelte';
+  import ErrorBanner from '#lib/components/ui/ErrorBanner.svelte';
+  import LoadingState from '#lib/components/ui/LoadingState.svelte';
+  import PageHeader from '#lib/components/ui/PageHeader.svelte';
   import MetricTrendCard from '#lib/components/MetricTrendCard.svelte';
   import MetricPicker from '#lib/components/MetricPicker.svelte';
   import TrendListView from '#lib/components/TrendListView.svelte';
@@ -523,27 +529,27 @@
 
 <div class="space-y-4">
   <!-- 工具条：标题 + 区间 + 视图 -->
-  <div class="flex flex-wrap items-baseline justify-between gap-2">
-    <h1 class="text-[15px] font-medium">趋势</h1>
-    <div class="flex flex-wrap items-center gap-2">
-      <Segmented
-        value={view === 'focus' ? 'grid' : view}
-        options={[
-          { label: '网格', value: 'grid' as const },
-          { label: '列表', value: 'list' as const }
-        ]}
-        onchange={(v) => {
-          view = v;
-          focusMetric = null;
-        }}
-      />
-      <RangePicker value={range} onchange={onRangeChange} />
-    </div>
-  </div>
+  <PageHeader>
+    趋势
+    {#snippet actions()}
+      <div class="flex flex-wrap items-center gap-2">
+        <Segmented
+          value={view === 'focus' ? 'grid' : view}
+          options={[
+            { label: '网格', value: 'grid' as const },
+            { label: '列表', value: 'list' as const }
+          ]}
+          onchange={(v) => {
+            view = v;
+            focusMetric = null;
+          }}
+        />
+        <RangePicker value={range} onchange={onRangeChange} />
+      </div>
+    {/snippet}
+  </PageHeader>
 
-  {#if error}
-    <div class="card px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
-  {/if}
+  <ErrorBanner {error} />
 
   <MetricPicker
     {defs}
@@ -556,19 +562,16 @@
 
   {#if defs.length === 0}
     {#if !error}
-      <div
-        class="card flex h-[160px] items-center justify-center text-[13px] text-[var(--color-ink-500)]"
-      >
-        加载中…
-      </div>
+      <Card pad="none">
+        <LoadingState text="加载中…" height={160} />
+      </Card>
     {/if}
   {:else if selected.length === 0}
-    <div class="card flex h-[160px] flex-col items-center justify-center gap-1 text-center">
-      <span class="text-[13px] text-[var(--color-ink-500)]">尚未选择指标</span>
-      <span class="text-[11px] text-[var(--color-ink-500)]/70"
-        >在上方按更新频率挑选，每个指标一张独立的图</span
-      >
-    </div>
+    <Card pad="none">
+      <EmptyState height={160} title="尚未选择指标">
+        {#snippet desc()}在上方按更新频率挑选，每个指标一张独立的图{/snippet}
+      </EmptyState>
+    </Card>
   {:else if view === 'focus' && focusCard}
     <!-- 聚焦：一个指标一张大图，其余选中项作为切换条 -->
     <div class="space-y-3">
@@ -605,15 +608,9 @@
       </div>
       <div class="flex flex-wrap gap-1.5">
         {#each ranked as c (c.metric)}
-          <button
-            class="rounded-full border px-2.5 py-1 text-[12px] transition-colors {c.metric ===
-            focusMetric
-              ? 'border-transparent bg-[var(--color-brand-soft)] text-[var(--color-brand)]'
-              : 'border-[var(--color-line)] text-[var(--color-ink-700)] hover:bg-[var(--color-line)]/50'}"
-            onclick={() => (focusMetric = c.metric)}
-          >
+          <Chip selected={c.metric === focusMetric} onclick={() => (focusMetric = c.metric)}>
             {c.name}
-          </button>
+          </Chip>
         {/each}
       </div>
     </div>
