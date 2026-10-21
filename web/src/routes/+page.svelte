@@ -30,6 +30,11 @@
   import GoalProgress from '#lib/components/GoalProgress.svelte';
   import MetricCard from '#lib/components/MetricCard.svelte';
   import TrendChart from '#lib/components/TrendChart.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import CardHeader from '#lib/components/ui/CardHeader.svelte';
+  import Chip from '#lib/components/ui/Chip.svelte';
+  import ErrorBanner from '#lib/components/ui/ErrorBanner.svelte';
+  import PageHeader from '#lib/components/ui/PageHeader.svelte';
 
   // 概览页的定位：**先看数据到没到，再看今天偏离自己的常态多少，最后给深挖的入口**。
   //
@@ -343,33 +348,35 @@
 </script>
 
 <div class="space-y-4">
-  <div class="flex items-baseline justify-between">
-    <h1 class="text-[15px] font-medium">今日概览</h1>
-    <span class="text-[12px] text-[var(--color-ink-500)]">
-      {loading ? '加载中…' : todayStr()}
-    </span>
-  </div>
+  <PageHeader>
+    今日概览
+    {#snippet actions()}
+      <span class="text-[12px] text-[var(--color-ink-500)]">
+        {loading ? '加载中…' : todayStr()}
+      </span>
+    {/snippet}
+  </PageHeader>
 
-  {#each errors as e (e)}
-    <div class="card px-4 py-2.5 text-[12px] text-[var(--color-danger)]">{e}</div>
-  {/each}
+  <ErrorBanner error={errors} size="sm" />
 
   <!-- 1. 数据新鲜度：自托管管线会静默失效，它是后面所有数字的可信前提 -->
   <FreshnessBar status={sync} {loading} {dataNote} />
 
   <!-- 2. 今日 vs 我的常态 -->
-  <div class="flex items-baseline justify-between gap-2">
-    <h2 class="text-[13px] font-medium">今天离自己的常态有多远</h2>
-    <button
-      class="text-[12px] text-[var(--color-brand)] hover:underline"
-      onclick={() => (focusEditing = !focusEditing)}
-    >
-      {focusEditing ? '完成' : '调整指标'}
-    </button>
-  </div>
+  <CardHeader>
+    今天离自己的常态有多远
+    {#snippet action()}
+      <button
+        class="text-[12px] text-[var(--color-brand)] hover:underline"
+        onclick={() => (focusEditing = !focusEditing)}
+      >
+        {focusEditing ? '完成' : '调整指标'}
+      </button>
+    {/snippet}
+  </CardHeader>
 
   {#if focusEditing}
-    <div class="card space-y-2 p-3">
+    <Card pad="none" class="space-y-2 p-3">
       <p class="text-[11px] text-[var(--color-ink-500)]">
         选中的指标常驻这张卡片组；选择存在本机浏览器，换设备要重新选。
       </p>
@@ -381,21 +388,14 @@
           </div>
           <div class="flex flex-wrap gap-1.5">
             {#each items as d (d.metric)}
-              <button
-                class="rounded-full border px-2.5 py-1 text-[12px] transition-colors {focus.includes(
-                  d.metric
-                )
-                  ? 'border-transparent bg-[var(--color-brand-soft)] text-[var(--color-brand)]'
-                  : 'border-[var(--color-line)] text-[var(--color-ink-700)] hover:bg-[var(--color-line)]/50'}"
-                onclick={() => toggleFocus(d.metric)}
-              >
+              <Chip selected={focus.includes(d.metric)} onclick={() => toggleFocus(d.metric)}>
                 {d.display_name_zh}
-              </button>
+              </Chip>
             {/each}
           </div>
         </div>
       {/each}
-    </div>
+    </Card>
   {/if}
 
   <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -418,33 +418,38 @@
   </div>
 
   {#if !loading && cards.every((c) => c.item?.value == null)}
-    <div class="card px-4 py-3 text-[12px] text-[var(--color-ink-500)]">
+    <Card pad="sm" class="text-[12px] text-[var(--color-ink-500)]">
       关注的指标暂无数据。先看上面的同步状态——多半是今天还没同步，而不是指标没接。
-    </div>
+    </Card>
   {/if}
 
   <!-- 3. 目标进度：没有设目标就不占版面 -->
   {#if goalRows.length > 0}
-    <div class="card p-4">
-      <div class="mb-2.5 flex items-baseline justify-between">
-        <span class="text-[13px] font-medium">今日进度</span>
-        <a href={resolve('/settings')} class="text-[11px] text-[var(--color-brand)] hover:underline"
-          >目标在设置页修改</a
-        >
-      </div>
+    <Card>
+      <CardHeader class="mb-2.5">
+        今日进度
+        {#snippet action()}
+          <a
+            href={resolve('/settings')}
+            class="text-[11px] text-[var(--color-brand)] hover:underline">目标在设置页修改</a
+          >
+        {/snippet}
+      </CardHeader>
       <GoalProgress rows={goalRows} />
-    </div>
+    </Card>
   {/if}
 
   <!-- 4. 昨夜睡眠 / 近 7 日运动：两张「结论卡」，各自带去详情页的入口 -->
   <div class="grid gap-3 lg:grid-cols-2">
-    <div class="card p-4">
-      <div class="mb-2 flex items-baseline justify-between">
-        <span class="text-[13px] font-medium">昨夜睡眠</span>
-        <a href={resolve('/sleep')} class="text-[11px] text-[var(--color-brand)] hover:underline"
-          >睡眠详情</a
-        >
-      </div>
+    <Card>
+      <CardHeader>
+        昨夜睡眠
+        {#snippet action()}
+          <a href={resolve('/sleep')} class="text-[11px] text-[var(--color-brand)] hover:underline"
+            >睡眠详情</a
+          >
+        {/snippet}
+      </CardHeader>
       {#if latestSleep}
         <div class="flex items-baseline gap-2">
           <span class="num text-[22px] font-medium">
@@ -492,15 +497,18 @@
           {loading ? '加载中…' : '近 10 天没有睡眠记录'}
         </div>
       {/if}
-    </div>
+    </Card>
 
-    <div class="card p-4">
-      <div class="mb-2 flex items-baseline justify-between">
-        <span class="text-[13px] font-medium">近 7 日运动</span>
-        <a href={resolve('/workouts')} class="text-[11px] text-[var(--color-brand)] hover:underline"
-          >运动记录</a
-        >
-      </div>
+    <Card>
+      <CardHeader>
+        近 7 日运动
+        {#snippet action()}
+          <a
+            href={resolve('/workouts')}
+            class="text-[11px] text-[var(--color-brand)] hover:underline">运动记录</a
+          >
+        {/snippet}
+      </CardHeader>
       <div class="flex items-baseline gap-2">
         <span class="num text-[22px] font-medium">{workoutSum.count} 次</span>
         <span class="num text-[12px] text-[var(--color-ink-500)]">
@@ -527,7 +535,7 @@
           {formatDuration(last.duration_min)}
         </div>
       {/if}
-    </div>
+    </Card>
   </div>
 
   <!-- 5. 趋势：默认常驻两张，指标可换；虚线是常态，回答「这段时间整体在什么水平」 -->
@@ -536,7 +544,7 @@
       {@const d = byName.get(metric)}
       {@const series = trendSeries[metric] ?? []}
       {@const baseline = medianOf(series)}
-      <div class="card p-4">
+      <Card>
         <div class="mb-2 flex items-baseline justify-between gap-2">
           <select
             class="min-w-0 shrink rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1 text-[12px] text-[var(--color-ink-700)]"
@@ -570,19 +578,21 @@
           近 {TREND_DAYS} 天{#if baseline !== null}
             · 虚线为区间中位数{/if}
         </div>
-      </div>
+      </Card>
     {/each}
   </div>
 
   <!-- 6. 值得关注 + 覆盖度：由服务端判定，前端不重复实现（免得首页与提示口径分裂） -->
-  <div class="card p-4">
-    <div class="mb-2 flex items-baseline justify-between gap-2">
-      <span class="text-[13px] font-medium">值得关注</span>
-      <span class="text-[11px] text-[var(--color-ink-500)]">
-        相对近 {BASELINE_WINDOW} 天常态 · 近 {coverage.window_days} 天有 {coverage.rows.length} /
-        {defs.length} 项指标有数据
-      </span>
-    </div>
+  <Card>
+    <CardHeader>
+      值得关注
+      {#snippet action()}
+        <span class="text-[11px] text-[var(--color-ink-500)]">
+          相对近 {BASELINE_WINDOW} 天常态 · 近 {coverage.window_days} 天有 {coverage.rows.length} /
+          {defs.length} 项指标有数据
+        </span>
+      {/snippet}
+    </CardHeader>
     {#if loading}
       <div class="text-[12px] text-[var(--color-ink-500)]">加载中…</div>
     {:else if insightRows.length === 0}
@@ -614,5 +624,5 @@
         {/each}
       </ul>
     {/if}
-  </div>
+  </Card>
 </div>
