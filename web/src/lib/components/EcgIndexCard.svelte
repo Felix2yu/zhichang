@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { EcgMetricKey } from '#lib/ecg-levels';
   import { ECG_METRICS, levelColor } from '#lib/ecg-levels';
+  import HelpToggle from '#lib/components/ui/HelpToggle.svelte';
 
   type Props = {
     metric: EcgMetricKey;
@@ -29,14 +30,7 @@
   <!-- 卡头：指标名 + 说明开关 -->
   <div class="flex items-start justify-between gap-1">
     <span class="text-[13px] leading-tight font-medium">{meta.title}</span>
-    <button
-      class="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-[var(--color-line)] text-[10px] text-[var(--color-ink-500)] transition-colors hover:border-[var(--color-ink-500)] hover:text-[var(--color-ink-700)]"
-      aria-label="查看指标说明"
-      aria-expanded={open}
-      onclick={() => (open = !open)}
-    >
-      ?
-    </button>
+    <HelpToggle bind:open class="mt-px" />
   </div>
 
   <!-- 数值 + 档位 -->

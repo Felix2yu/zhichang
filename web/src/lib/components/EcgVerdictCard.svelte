@@ -1,5 +1,6 @@
 <script lang="ts">
   import { codeColor } from '#lib/ecg-levels';
+  import HelpToggle from '#lib/components/ui/HelpToggle.svelte';
 
   type Props = {
     /** 众数判定（如「窦性心律」） */
@@ -42,14 +43,7 @@
   <div class="min-w-0">
     <div class="flex items-center gap-2">
       <span class="text-[13px] font-medium">心电分析印象</span>
-      <button
-        class="flex h-4 w-4 items-center justify-center rounded-full border border-[var(--color-line)] text-[10px] text-[var(--color-ink-500)] transition-colors hover:border-[var(--color-ink-500)] hover:text-[var(--color-ink-700)]"
-        aria-label="查看指标说明"
-        aria-expanded={open}
-        onclick={() => (open = !open)}
-      >
-        ?
-      </button>
+      <HelpToggle bind:open />
     </div>
     <div class="mt-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
       <span class="text-[22px] leading-none font-medium" style="color:{codeColor('sinus_rhythm')}">

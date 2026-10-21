@@ -3,6 +3,12 @@
   import { api, type EcgAnalysis, type EcgWaveform } from '#lib/api';
   import { lastDays, type Range } from '#lib/range';
   import RangePicker from '#lib/components/RangePicker.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import DataTable from '#lib/components/DataTable.svelte';
+  import EmptyState from '#lib/components/ui/EmptyState.svelte';
+  import ErrorBanner from '#lib/components/ui/ErrorBanner.svelte';
+  import PageHeader from '#lib/components/ui/PageHeader.svelte';
+  import InfoNote from '#lib/components/ui/InfoNote.svelte';
   import EcgVerdictCard from '#lib/components/EcgVerdictCard.svelte';
   import EcgIndexCard from '#lib/components/EcgIndexCard.svelte';
   import EcgTrendChart from '#lib/components/EcgTrendChart.svelte';
@@ -120,14 +126,14 @@
 </script>
 
 <div class="space-y-4">
-  <div class="flex flex-wrap items-baseline justify-between gap-2">
-    <h1 class="text-[15px] font-medium">心电图</h1>
-    <RangePicker value={range} onchange={(r) => ((range = r), load())} />
-  </div>
+  <PageHeader>
+    心电图
+    {#snippet actions()}
+      <RangePicker value={range} onchange={(r) => ((range = r), load())} />
+    {/snippet}
+  </PageHeader>
 
-  {#if error}
-    <div class="card px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
-  {/if}
+  <ErrorBanner {error} />
 
   {#if loading}
     <div class="card px-4 py-10 text-center text-[13px] text-[var(--color-ink-500)]">
@@ -182,27 +188,27 @@
     </div>
 
     <!-- 趋势：指标切换 + 点击下钻 -->
-    <div class="card p-4">
+    <Card>
       <EcgTrendChart {records} {selectedId} onselect={select} />
-    </div>
+    </Card>
 
     <!-- 分布 + 对比 -->
     <div class="grid gap-3 lg:grid-cols-2">
-      <div class="card p-4">
+      <Card>
         <EcgDistributionChart
           items={analysis.distribution}
           total={analysis.summary.count}
           activeCode={filterCode}
           onfilter={(c) => (filterCode = c)}
         />
-      </div>
-      <div class="card p-4">
+      </Card>
+      <Card>
         <EcgComparisonCard comparison={analysis.comparison} />
-      </div>
+      </Card>
     </div>
 
     <!-- 记录列表：紧凑、无工程参数 -->
-    <div class="card overflow-hidden">
+    <Card pad="none" class="overflow-hidden">
       <div class="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5">
         <div class="text-[13px] font-medium">测量记录</div>
         <div class="flex items-center gap-2 text-[12px] text-[var(--color-ink-500)]">
@@ -219,115 +225,106 @@
           <span class="num">{shown.length} 条</span>
         </div>
       </div>
-      <table class="w-full text-[13px]">
-        <thead class="bg-[var(--color-surface-2)] text-[12px] text-[var(--color-ink-500)]">
-          <tr>
-            <th class="px-4 py-2 text-left font-normal">测量时刻</th>
-            <th class="px-4 py-2 text-left font-normal">判定</th>
-            <th class="px-4 py-2 text-right font-normal">心率</th>
-            <th class="px-4 py-2 text-right font-normal">节律</th>
-            <th class="px-4 py-2 text-right font-normal">信号</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each shown as r (r.id)}
+      <DataTable
+        rows={shown}
+        rowKey={(r) => String(r.id)}
+        selectedKey={selectedId === null ? null : String(selectedId)}
+        emphasis
+        onrowclick={(r) => select(r.id)}
+        columns={[
+          { label: '测量时刻' },
+          { label: '判定' },
+          { label: '心率', align: 'right' },
+          { label: '节律', align: 'right' },
+          { label: '信号', align: 'right' }
+        ]}
+      >
+        {#snippet children(r)}
+          <td class="num px-4 py-2">{fmtTime(r.date, r.clock)}</td>
+          <td class="px-4 py-2">
+            <!-- 归一没认出来的判定照原样展示，并标注它的来路 -->
+            <span class={r.known ? '' : 'text-[var(--color-ink-500)]'}>{r.label}</span>
+            {#if !r.known}
+              <span class="text-[11px] text-[var(--color-ink-500)]"> · 上游原文</span>
+            {/if}
+          </td>
+          <td class="num px-4 py-2 text-right">
+            {r.avg_hr === null ? '—' : `${Math.round(r.avg_hr)} 次/分`}
+          </td>
+          <td class="num px-4 py-2 text-right">
+            {RHYTHM_LABELS[r.rhythm] ?? '—'}
+          </td>
+          <td class="num px-4 py-2 text-right">
+            {QUALITY_LABELS[r.quality] ?? '—'}
+          </td>
+        {/snippet}
+        {#snippet expand(r)}
+          {#if selectedId === r.id}
             <tr
-              class="cursor-pointer border-t border-[var(--color-line)] transition-colors {selectedId ===
-              r.id
-                ? 'bg-[var(--color-brand-soft)]/60'
-                : 'hover:bg-[var(--color-surface-2)]'}"
-              onclick={() => select(r.id)}
+              class="border-t border-[var(--color-line)] bg-[var(--color-brand-soft)]/25"
+              use:reveal={r.id === revealId && !waveLoading}
             >
-              <td class="num px-4 py-2">{fmtTime(r.date, r.clock)}</td>
-              <td class="px-4 py-2">
-                <!-- 归一没认出来的判定照原样展示，并标注它的来路 -->
-                <span class={r.known ? '' : 'text-[var(--color-ink-500)]'}>{r.label}</span>
-                {#if !r.known}
-                  <span class="text-[11px] text-[var(--color-ink-500)]"> · 上游原文</span>
+              <td colspan="5" class="px-4 pt-2.5 pb-3">
+                <div class="flex flex-wrap items-baseline justify-between gap-2">
+                  <div class="text-[12px] font-medium">心电图波形</div>
+                  {#if waveSummary}
+                    <div class="num flex flex-wrap gap-x-4 text-[12px] text-[var(--color-ink-500)]">
+                      <span>约 {waveSummary.secs} 秒</span>
+                      {#if waveSummary.beats !== null}
+                        <span>{waveSummary.beats} 次心跳</span>
+                      {/if}
+                      {#if waveSummary.hr !== null}
+                        <span>平均 {Math.round(waveSummary.hr)} 次/分</span>
+                      {/if}
+                      <span>节律{waveSummary.rhythm}</span>
+                    </div>
+                  {/if}
+                </div>
+                {#if waveLoading}
+                  <div class="py-6 text-center text-[13px] text-[var(--color-ink-500)]">
+                    波形加载中…
+                  </div>
+                {:else if waveError}
+                  <ErrorBanner error={waveError} bare class="py-2" />
+                {:else if waveform && waveform.voltages.length > 0}
+                  <EcgStripChart
+                    voltages={waveform.voltages}
+                    unit=""
+                    samplingFrequency={waveform.sampling_frequency ?? null}
+                    peaks={waveform.peaks ?? []}
+                    height={240}
+                  />
+                  <div class="mt-1 text-[11px] text-[var(--color-ink-500)]">
+                    黄色竖线标出服务端识别出的每次心跳；波形仅供浏览，判读以设备给出的结论为准
+                  </div>
+                {:else}
+                  <div class="py-6 text-center text-[13px] text-[var(--color-ink-500)]">
+                    这条记录没有波形数据（导出没给波形，或波形有点缺电压、整段没入库）
+                  </div>
+                {/if}
+                {#if r.quality === 'poor'}
+                  <div
+                    class="mt-2 rounded bg-[var(--color-warn)]/10 px-3 py-2 text-[12px] text-[var(--color-warn)]"
+                  >
+                    这条记录的信号质量不佳，它的心率变异性等指数未计入上方统计
+                  </div>
                 {/if}
               </td>
-              <td class="num px-4 py-2 text-right">
-                {r.avg_hr === null ? '—' : `${Math.round(r.avg_hr)} 次/分`}
-              </td>
-              <td class="num px-4 py-2 text-right">
-                {RHYTHM_LABELS[r.rhythm] ?? '—'}
-              </td>
-              <td class="num px-4 py-2 text-right">
-                {QUALITY_LABELS[r.quality] ?? '—'}
-              </td>
             </tr>
-            {#if selectedId === r.id}
-              <tr
-                class="border-t border-[var(--color-line)] bg-[var(--color-brand-soft)]/25"
-                use:reveal={r.id === revealId && !waveLoading}
-              >
-                <td colspan="5" class="px-4 pt-2.5 pb-3">
-                  <div class="flex flex-wrap items-baseline justify-between gap-2">
-                    <div class="text-[12px] font-medium">心电图波形</div>
-                    {#if waveSummary}
-                      <div
-                        class="num flex flex-wrap gap-x-4 text-[12px] text-[var(--color-ink-500)]"
-                      >
-                        <span>约 {waveSummary.secs} 秒</span>
-                        {#if waveSummary.beats !== null}
-                          <span>{waveSummary.beats} 次心跳</span>
-                        {/if}
-                        {#if waveSummary.hr !== null}
-                          <span>平均 {Math.round(waveSummary.hr)} 次/分</span>
-                        {/if}
-                        <span>节律{waveSummary.rhythm}</span>
-                      </div>
-                    {/if}
-                  </div>
-                  {#if waveLoading}
-                    <div class="py-6 text-center text-[13px] text-[var(--color-ink-500)]">
-                      波形加载中…
-                    </div>
-                  {:else if waveError}
-                    <div class="py-2 text-[13px] text-[var(--color-danger)]">{waveError}</div>
-                  {:else if waveform && waveform.voltages.length > 0}
-                    <EcgStripChart
-                      voltages={waveform.voltages}
-                      unit=""
-                      samplingFrequency={waveform.sampling_frequency ?? null}
-                      peaks={waveform.peaks ?? []}
-                      height={240}
-                    />
-                    <div class="mt-1 text-[11px] text-[var(--color-ink-500)]">
-                      黄色竖线标出服务端识别出的每次心跳；波形仅供浏览，判读以设备给出的结论为准
-                    </div>
-                  {:else}
-                    <div class="py-6 text-center text-[13px] text-[var(--color-ink-500)]">
-                      这条记录没有波形数据（导出没给波形，或波形有点缺电压、整段没入库）
-                    </div>
-                  {/if}
-                  {#if r.quality === 'poor'}
-                    <div
-                      class="mt-2 rounded bg-[var(--color-warn)]/10 px-3 py-2 text-[12px] text-[var(--color-warn)]"
-                    >
-                      这条记录的信号质量不佳，它的心率变异性等指数未计入上方统计
-                    </div>
-                  {/if}
-                </td>
-              </tr>
-            {/if}
-          {:else}
-            <tr>
-              <td colspan="5" class="px-4 py-6 text-center text-[var(--color-ink-500)]">
-                该筛选下没有记录
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+          {/if}
+        {/snippet}
+        {#snippet empty()}
+          <EmptyState variant="row" colspan={5} title="该筛选下没有记录" />
+        {/snippet}
+      </DataTable>
+    </Card>
 
     <!-- 说明 -->
-    <p class="px-1 text-[11px] leading-relaxed text-[var(--color-ink-500)]">
+    <InfoNote dim={false} class="px-1">
       说明：所有统计与指数均由本机根据波形数据实时计算，不上传、不联网；指数是健康参考而非医学诊断，
       异常提示请以医疗机构意见为准。心电数据来自 iPhone/Apple Watch 的心电测量（单次约 30 秒），
       同步方式见「同步」页。
-    </p>
+    </InfoNote>
   {:else}
     <div class="card px-4 py-10 text-center">
       <div class="text-[13px] text-[var(--color-ink-500)]">所选时间段内暂无心电记录</div>
