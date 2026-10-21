@@ -7,7 +7,7 @@
 - **后端**：Go 1.27 · chi · pgx v5 · TimescaleDB 2.30（PostgreSQL 18）
 - **前端**：SvelteKit 3 · Svelte 5 · Tailwind v4 · ECharts 6（构建产物内嵌进 Go 二进制）
 - **接入**：Health Auto Export REST API（主通道）· MQTT（可选旁路，默认关闭）
-- **AI**：内置 MCP 服务器（stdio + Streamable HTTP），11 个只读工具
+- **AI**：内置 MCP 服务器（stdio + Streamable HTTP），11 个只读工具 + 1 个睡眠清理工具
 
 ## 快速开始
 
@@ -154,7 +154,9 @@ GPX 取文件哈希，内嵌轨迹取**解码后的点序列**哈希（同一批
 
 ## MCP
 
-内置 11 个只读工具：`health_list_metrics`、`health_daily_summary`、`health_query`、`health_compare`、`health_latest`、`health_sleep`、`health_sleep_detail`、`health_workouts`、`health_ecg`、`health_data_coverage`、`health_correlation`。
+内置 11 个只读工具：`health_list_metrics`、`health_daily_summary`、`health_query`、`health_compare`、`health_latest`、`health_sleep`、`health_sleep_detail`、`health_workouts`、`health_ecg`、`health_data_coverage`、`health_correlation`；另有 1 个维护工具 `health_sleep_delete`。
+
+`health_sleep_delete` 是唯一的写工具，用于「旧导出只有聚合、清空后重新导入细分记录」这类场景：默认只预演，返回将删除的睡眠会话与分期样本条数；必须显式传 `confirm=true` 才真正删除，且不可撤销。`from` / `to` 按睡眠日过滤，留空表示不设该端边界（两端都留空即全部历史）。删除会一并清掉这些日期的天级睡眠值并立即重算，删完即可重新导入。
 
 **stdio（Claude Desktop 等）**
 

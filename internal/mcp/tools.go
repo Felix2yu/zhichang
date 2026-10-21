@@ -10,7 +10,7 @@ import (
 	"github.com/Felix2yu/zhichang/internal/store/postgres"
 )
 
-// New 构造 MCP 服务器并注册全部只读工具。
+// New 构造 MCP 服务器并注册全部工具。
 func New(deps *Deps) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "zhichang", Version: "0.1.0"}, nil)
 
@@ -84,6 +84,26 @@ func New(deps *Deps) *mcp.Server {
 	})
 
 	mcp.AddTool(s, &mcp.Tool{
+		Name: "health_sleep_delete",
+		Description: "清理睡眠记录（睡眠会话与分期样本），用于删掉旧数据后重新导入。" +
+			"默认只预演、不改数据；必须显式传 confirm=true 才真正删除，且不可撤销。" +
+			"from/to 按睡眠日过滤，留空表示不设该端边界（两端都留空即全部历史）",
+		// 客户端据此把工具标成危险操作，而不是当成普通查询。
+		Annotations: &mcp.ToolAnnotations{
+			Title:           "清空睡眠记录",
+			DestructiveHint: boolPtr(true),
+			IdempotentHint:  true,
+			OpenWorldHint:   boolPtr(false),
+		},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		From    string `json:"from,omitempty" jsonschema:"起始睡眠日 YYYY-MM-DD，留空表示不限"`
+		To      string `json:"to,omitempty" jsonschema:"结束睡眠日 YYYY-MM-DD，留空表示不限"`
+		Confirm bool   `json:"confirm,omitempty" jsonschema:"确认删除：缺省或 false 只统计不删除；用户明确要求清空后才传 true"`
+	}) (*mcp.CallToolResult, Result, error) {
+		return deps.result(deps.SleepDelete(ctx, in.From, in.To, in.Confirm))
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
 		Name:        "health_workouts",
 		Description: "查询区间内的运动记录：项目、时长、消耗、距离",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
@@ -133,9 +153,11 @@ func DepsFrom(db *postgres.DB, reg *metric.Registry, loc *time.Location, tzName 
 	return &Deps{DB: db, Metrics: reg, Location: loc, Timezone: tzName, Redact: redact}
 }
 
+func boolPtr(v bool) *bool { return &v }
+
 // result 组装工具输出，并在这里（而不是每个取值点）套上脱敏档。
 //
-// 11 个工具、二十多处格式化，逐点判断漏掉任何一处都是一次静默泄露；
+// 12 个工具、二十多处格式化，逐点判断漏掉任何一处都是一次静默泄露；
 // 挂在唯一的出口上，以后新加工具天然被覆盖，不必再提醒作者「记得脱敏」。
 //
 // 脱敏刻意做得比「只挡测量值」更多：数值与计数一起挡，留下指标名、单位、日期与钟点。

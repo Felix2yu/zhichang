@@ -1,4 +1,5 @@
-// Package mcp 暴露健康数据的只读查询能力，供 AI 客户端自然语言调用。
+// Package mcp 暴露健康数据的查询与维护能力，供 AI 客户端自然语言调用。
+// 查询工具只读；唯一的写工具是睡眠记录清理，默认预演、显式确认才执行。
 package mcp
 
 import (
@@ -306,6 +307,71 @@ func (d *Deps) Sleep(ctx context.Context, from, to string) (string, error) {
 	}
 	b.WriteString(fmt.Sprintf("\n日均总睡眠 %.1f 小时\n", total/float64(len(rows))))
 	b.WriteString("逐晚分期时间线与夜间心率明细：用 health_sleep_detail 传睡眠日查询")
+	return b.String(), nil
+}
+
+// sleepRangeLabel 把可选区间写成一句人能读的范围。
+func sleepRangeLabel(from, to string) string {
+	switch {
+	case from == "" && to == "":
+		return "全部历史"
+	case from == "":
+		return "截至 " + to
+	case to == "":
+		return from + " 起"
+	default:
+		return from + " ~ " + to
+	}
+}
+
+// SleepDelete 清空睡眠记录（会话 + 分期样本），用于把旧数据删掉后重新导入。
+//
+// 默认只预演、不落刀：AI 客户端先拿到「会删多少」，用户确认后传 confirm=true。
+// 删除后天级睡眠值同步重算，stdio 模式没有后台 worker 也不会留下旧数值。
+func (d *Deps) SleepDelete(ctx context.Context, from, to string, confirm bool) (string, error) {
+	label := sleepRangeLabel(from, to)
+	if !confirm {
+		st, err := d.DB.SleepDeletePreview(ctx, from, to)
+		if err != nil {
+			return "", err
+		}
+		if st.Sessions == 0 && st.Segments == 0 {
+			if len(st.Dates) == 0 {
+				return fmt.Sprintf("%s 范围内没有睡眠记录", label), nil
+			}
+			return fmt.Sprintf("%s 范围内没有睡眠会话或分期样本，但有 %d 天的天级睡眠值残留；confirm=true 会一并清理",
+				label, len(st.Dates)), nil
+		}
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("睡眠记录清理预演（%s）\n", label))
+		b.WriteString(fmt.Sprintf("- 睡眠会话 %d 条\n", st.Sessions))
+		b.WriteString(fmt.Sprintf("- 分期样本 %d 条\n", st.Segments))
+		b.WriteString(fmt.Sprintf("- 涉及 %d 个日期（%s ~ %s）\n", len(st.Dates), st.Dates[0], st.Dates[len(st.Dates)-1]))
+		b.WriteString("未修改任何数据；确认无误后传 confirm=true 再执行（不可撤销）")
+		return b.String(), nil
+	}
+
+	st, err := d.DB.DeleteSleep(ctx, from, to)
+	if err != nil {
+		return "", err
+	}
+	if len(st.Dates) > 0 {
+		if err := postgres.NewRollup(d.DB, d.Metrics).Recompute(ctx, st.Dates, []string{postgres.SleepMetric}); err != nil {
+			// 数据已经删了，重算失败要如实说，不能让客户端以为还需要再删一次。
+			return "", fmt.Errorf("已删除睡眠会话 %d 条、分期样本 %d 条，但天级重算失败: %w；重新导入会再次触发重算",
+				st.Sessions, st.Segments, err)
+		}
+	}
+	if st.Sessions == 0 && st.Segments == 0 && len(st.Dates) == 0 {
+		return fmt.Sprintf("%s 范围内没有睡眠记录，未做任何修改", label), nil
+	}
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("睡眠记录已清空（%s）\n", label))
+	b.WriteString(fmt.Sprintf("- 删除睡眠会话 %d 条、分期样本 %d 条\n", st.Sessions, st.Segments))
+	if len(st.Dates) > 0 {
+		b.WriteString(fmt.Sprintf("- 已重算 %d 个日期的天级值\n", len(st.Dates)))
+	}
+	b.WriteString("现在可以重新导入睡眠数据了")
 	return b.String(), nil
 }
 
