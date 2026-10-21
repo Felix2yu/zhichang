@@ -3,6 +3,13 @@
   import { api, type WorkoutRow } from '#lib/api';
   import { lastDays, type Range } from '#lib/range';
   import RangePicker from '#lib/components/RangePicker.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import CardHeader from '#lib/components/ui/CardHeader.svelte';
+  import DataTable from '#lib/components/DataTable.svelte';
+  import EmptyState from '#lib/components/ui/EmptyState.svelte';
+  import ErrorBanner from '#lib/components/ui/ErrorBanner.svelte';
+  import StatTile from '#lib/components/ui/StatTile.svelte';
+  import PageHeader from '#lib/components/ui/PageHeader.svelte';
   import WorkoutDetail from '#lib/components/WorkoutDetail.svelte';
   import { prefs, formatDuration } from '#lib/prefs.svelte';
 
@@ -71,40 +78,35 @@
 </script>
 
 <div class="space-y-4">
-  <div class="flex flex-wrap items-baseline justify-between gap-2">
-    <h1 class="text-[15px] font-medium">运动</h1>
-    <RangePicker value={range} onchange={(r) => ((range = r), load())} />
-  </div>
+  <PageHeader>
+    运动
+    {#snippet actions()}
+      <RangePicker value={range} onchange={(r) => ((range = r), load())} />
+    {/snippet}
+  </PageHeader>
 
-  {#if error}
-    <div class="card px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
-  {/if}
+  <ErrorBanner {error} />
 
   <div class="grid grid-cols-3 gap-3">
-    <div class="card px-4 py-3">
-      <div class="text-[12px] text-[var(--color-ink-500)]">次数</div>
-      <div class="num mt-1 text-[20px] font-medium">{rows.length}</div>
-    </div>
-    <div class="card px-4 py-3">
-      <div class="text-[12px] text-[var(--color-ink-500)]">总时长</div>
-      <div class="num mt-1 text-[20px] font-medium">{formatDuration(totalMin)}</div>
-    </div>
-    <div class="card px-4 py-3">
-      <div class="text-[12px] text-[var(--color-ink-500)]">总消耗（主动）</div>
-      <div class="num mt-1 text-[20px] font-medium">
-        {Math.round(totalEnergy)}{energyUnit ? ` ${energyUnit}` : ''}
-      </div>
-      {#if totalAllEnergy > totalEnergy}
-        <div class="mt-0.5 text-[11px] text-[var(--color-ink-500)]">
-          含基础代谢 {Math.round(totalAllEnergy)}{energyUnit ? ` ${energyUnit}` : ''}
-        </div>
-      {/if}
-    </div>
+    <StatTile label="次数" value={rows.length} />
+    <StatTile label="总时长" value={formatDuration(totalMin)} />
+    <StatTile
+      label="总消耗（主动）"
+      value="{Math.round(totalEnergy)}{energyUnit ? ` ${energyUnit}` : ''}"
+    >
+      {#snippet note()}
+        {#if totalAllEnergy > totalEnergy}
+          <span class="mt-0.5"
+            >含基础代谢 {Math.round(totalAllEnergy)}{energyUnit ? ` ${energyUnit}` : ''}</span
+          >
+        {/if}
+      {/snippet}
+    </StatTile>
   </div>
 
   {#if byType.length > 0}
-    <div class="card p-4">
-      <div class="mb-2 text-[13px] font-medium">按类型</div>
+    <Card>
+      <CardHeader>按类型</CardHeader>
       <div class="flex flex-wrap gap-x-6 gap-y-1 text-[12px]">
         {#each byType as [name, v] (name)}
           <span class="text-[var(--color-ink-700)]">
@@ -115,69 +117,64 @@
           </span>
         {/each}
       </div>
-    </div>
+    </Card>
   {/if}
 
-  <div class="card overflow-hidden">
-    <table class="w-full text-[13px]">
-      <thead class="bg-[var(--color-surface-2)] text-[12px] text-[var(--color-ink-500)]">
-        <tr>
-          <th class="px-4 py-2 text-left font-normal">开始</th>
-          <th class="px-4 py-2 text-left font-normal">项目</th>
-          <th class="px-4 py-2 text-right font-normal">时长 (min)</th>
-          <th
-            class="px-4 py-2 text-right font-normal"
-            title="主动能量口径（不含基础代谢），与健康 App 一致">消耗 (kcal)</th
-          >
-          <th class="px-4 py-2 text-right font-normal">距离</th>
-          <th class="px-4 py-2 text-right font-normal">平均心率</th>
-          <th class="px-4 py-2 text-right font-normal">最大心率</th>
-          <th class="px-4 py-2 text-left font-normal">来源</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each rows as r (r.id)}
-          <tr
-            class="cursor-pointer border-t border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"
-            class:bg-[var(--color-surface-3)]={open?.id === r.id}
-            title="查看轨迹与逐点心率"
-            onclick={() => (open = open?.id === r.id ? null : r)}
-          >
-            <td class="num px-4 py-2">{fmtTime(r.start)}</td>
-            <td class="px-4 py-2">{r.name}</td>
-            <td class="num px-4 py-2 text-right">{r.duration_min.toFixed(0)}</td>
-            <td class="num px-4 py-2 text-right">
-              {#if shownEnergy(r) != null}
-                {Math.round(shownEnergy(r) ?? 0)}
-                {#if isTotalCaliber(r)}
-                  <!-- 老记录上游没给主动能量，只有含基础代谢的总消耗：
-									     标出来，否则两行数字看着同口径，人会拿它们互相比较。 -->
-                  <span
-                    class="text-[11px] text-[var(--color-ink-500)]"
-                    title="该记录上游未提供主动能量，此处为含基础代谢的总消耗">总</span
-                  >
-                {/if}
-              {:else}
-                —
-              {/if}
-            </td>
-            <td class="num px-4 py-2 text-right">
-              {r.total_distance ? `${r.total_distance.toFixed(2)} ${r.distance_unit ?? ''}` : '—'}
-            </td>
-            <td class="num px-4 py-2 text-right">{r.avg_hr ? Math.round(r.avg_hr) : '—'}</td>
-            <td class="num px-4 py-2 text-right">{r.max_hr ? Math.round(r.max_hr) : '—'}</td>
-            <td class="px-4 py-2">{r.source}</td>
-          </tr>
-        {:else}
-          <tr>
-            <td colspan="8" class="px-4 py-6 text-center text-[var(--color-ink-500)]">
-              {loading ? '加载中…' : '暂无运动记录'}
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  </div>
+  <Card pad="none" class="overflow-hidden">
+    <DataTable
+      {rows}
+      rowKey={(r) => String(r.id)}
+      selectedKey={open ? String(open.id) : null}
+      onrowclick={(r) => (open = open?.id === r.id ? null : r)}
+      rowTitle={() => '查看轨迹与逐点心率'}
+      columns={[
+        { label: '开始' },
+        { label: '项目' },
+        { label: '时长 (min)', align: 'right' },
+        {
+          label: '消耗 (kcal)',
+          align: 'right',
+          title: '主动能量口径（不含基础代谢），与健康 App 一致'
+        },
+        { label: '距离', align: 'right' },
+        { label: '平均心率', align: 'right' },
+        { label: '最大心率', align: 'right' },
+        { label: '来源' }
+      ]}
+    >
+      {#snippet children(r)}
+        <td class="num px-4 py-2">{fmtTime(r.start)}</td>
+        <td class="px-4 py-2">{r.name}</td>
+        <td class="num px-4 py-2 text-right">{r.duration_min.toFixed(0)}</td>
+        <td class="num px-4 py-2 text-right">
+          {#if shownEnergy(r) != null}
+            {Math.round(shownEnergy(r) ?? 0)}
+            {#if isTotalCaliber(r)}
+              <!-- 老记录上游没给主动能量，只有含基础代谢的总消耗：
+						   标出来，否则两行数字看着同口径，人会拿它们互相比较。 -->
+              <span
+                class="text-[11px] text-[var(--color-ink-500)]"
+                title="该记录上游未提供主动能量，此处为含基础代谢的总消耗">总</span
+              >
+            {/if}
+          {:else}
+            —
+          {/if}
+        </td>
+        <td class="num px-4 py-2 text-right">
+          {r.total_distance ? `${r.total_distance.toFixed(2)} ${r.distance_unit ?? ''}` : '—'}
+        </td>
+        <td class="num px-4 py-2 text-right">{r.avg_hr ? Math.round(r.avg_hr) : '—'}</td>
+        <td class="num px-4 py-2 text-right">{r.max_hr ? Math.round(r.max_hr) : '—'}</td>
+        <td class="px-4 py-2">{r.source}</td>
+      {/snippet}
+      {#snippet empty()}
+        <EmptyState variant="row" colspan={8}>
+          {loading ? '加载中…' : '暂无运动记录'}
+        </EmptyState>
+      {/snippet}
+    </DataTable>
+  </Card>
 
   {#if open}
     <WorkoutDetail workout={open} onclose={() => (open = null)} />
