@@ -101,7 +101,9 @@
   }: Props = $props();
 
   let el: HTMLDivElement | undefined = $state();
-  let chart: echarts.ECharts | undefined;
+  // 用 $state.raw 让「实例就绪」本身成为依赖：卡片通常在数据到达前就挂载了，
+  // 若 chart 是普通变量，下面的重绘 effect 会在 chart 尚不存在时早退且不再被唤醒。
+  let chart = $state.raw<echarts.ECharts | undefined>(undefined);
 
   // —— 数值格式化 ——
   function fmt(v: number): string {
@@ -339,7 +341,11 @@
     chart = c;
     const onResize = () => c.resize();
     window.addEventListener('resize', onResize);
+    // 档位切换会改图区高度（step 104 / 连续 150 / 聚焦翻倍），窗口 resize 收不到这种变化
+    const ro = new ResizeObserver(onResize);
+    ro.observe(el);
     return () => {
+      ro.disconnect();
       window.removeEventListener('resize', onResize);
       c.dispose();
       if (chart === c) chart = undefined;
@@ -348,7 +354,9 @@
 
   // 数据/档位变化时重绘（不画图时不初始化图形）
   $effect(() => {
-    if (!chart || !hasData) return;
+    // 先读 hasData 再读 chart：两个依赖都要被订阅，
+    // 否则「先有数据、后有实例」的挂载顺序下会漏画。
+    if (!hasData || !chart) return;
     chart.setOption(buildOption(), { notMerge: true });
   });
 
