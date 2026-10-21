@@ -12,6 +12,7 @@
     type MetricCoverage
   } from '#lib/metric-frequency';
   import { matchMetric } from '#lib/metric-search';
+  import Chip from '#lib/components/ui/Chip.svelte';
 
   // 指标选择器：以「数据频率」为主轴，分类与搜索为交叉筛选。
   //
@@ -136,36 +137,26 @@
       />
       <div class="flex flex-wrap gap-1">
         {#each [{ key: 'all' as const, label: `全部 ${counts.all}` }, { key: 'daily' as const, label: `日更 ${counts.daily}` }, { key: 'regular' as const, label: `定期 ${counts.regular}` }, { key: 'occasional' as const, label: `偶发 ${counts.occasional}` }, { key: 'never' as const, label: `未接入 ${counts.never}` }] as t (t.key)}
-          <button
-            class="rounded-full border px-2 py-0.5 text-[11px] transition-colors {freq === t.key
-              ? 'border-transparent bg-[var(--color-brand-soft)] text-[var(--color-brand)]'
-              : 'border-[var(--color-line)] text-[var(--color-ink-700)] hover:bg-[var(--color-line)]/50'}"
-            onclick={() => (freq = t.key)}
-          >
+          <Chip size="sm" selected={freq === t.key} onclick={() => (freq = t.key)}>
             {t.label}
-          </button>
+          </Chip>
         {/each}
       </div>
     </div>
 
     <div class="mt-1.5 flex flex-wrap items-center gap-1">
-      <button
-        class="rounded-full border px-2 py-0.5 text-[11px] transition-colors {group === null
-          ? 'border-transparent bg-[var(--color-brand-soft)] text-[var(--color-brand)]'
-          : 'border-[var(--color-line)] text-[var(--color-ink-500)] hover:bg-[var(--color-line)]/50'}"
-        onclick={() => (group = null)}
-      >
+      <Chip size="sm" variant="quiet" selected={group === null} onclick={() => (group = null)}>
         全部分类
-      </button>
+      </Chip>
       {#each METRIC_GROUPS as g (g.id)}
-        <button
-          class="rounded-full border px-2 py-0.5 text-[11px] transition-colors {group === g.id
-            ? 'border-transparent bg-[var(--color-brand-soft)] text-[var(--color-brand)]'
-            : 'border-[var(--color-line)] text-[var(--color-ink-500)] hover:bg-[var(--color-line)]/50'}"
+        <Chip
+          size="sm"
+          variant="quiet"
+          selected={group === g.id}
           onclick={() => (group = group === g.id ? null : g.id)}
         >
           {g.label}
-        </button>
+        </Chip>
       {/each}
     </div>
 
@@ -211,15 +202,11 @@
               {#each s.items as d (d.metric)}
                 {@const c = cov.get(d.metric)}
                 {@const isNever = !c || c.freq === 'never'}
-                <button
-                  class="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[12px] transition-colors {selected.includes(
-                    d.metric
-                  )
-                    ? 'border-transparent bg-[var(--color-brand-soft)] text-[var(--color-brand)]'
-                    : isNever
-                      ? // 未接入的一眼就该看出来：虚线 + 弱化文字，不用点进去才知道是空的
-                        'border-dashed border-[var(--color-line)] text-[var(--color-ink-400)] hover:bg-[var(--color-line)]/40'
-                      : 'border-[var(--color-line)] text-[var(--color-ink-700)] hover:bg-[var(--color-line)]/50'}"
+                <Chip
+                  size="sm"
+                  class="flex items-center gap-1.5 text-[12px]"
+                  variant={isNever ? 'dashed' : 'outline'}
+                  selected={selected.includes(d.metric)}
                   title={isNever ? `${FREQ_HINT.never} · 选中后卡片会给出接入入口` : undefined}
                   onclick={() => toggle(d.metric)}
                 >
@@ -230,7 +217,7 @@
                       >{agoText(c.daysSince) ?? '未接入'}</span
                     >
                   {/if}
-                </button>
+                </Chip>
               {/each}
             </div>
           {/if}
