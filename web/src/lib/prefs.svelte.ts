@@ -13,6 +13,8 @@ const DURATION_KEY = 'zhichang.duration-format';
 /** 概览与趋势页各自的指标选择：键名归这里统管，重置才可能一次清干净。 */
 export const FOCUS_STORE_KEY = 'zhichang.focus-metrics';
 export const TREND_STORE_KEY = 'zhichang.trend-metrics';
+/** 趋势页选中的指标：写本机 + 写 URL，刷新和分享都要能还原。 */
+export const TREND_SELECTED_KEY = 'zhichang.trend-selected';
 
 /** 重置本机偏时要抹掉的键。不含 zhichang.settings-token——那是 sessionStorage，
  *  关标签页自己就没了，而且用户可能正授权着，不该被「恢复默认显示」顺手登出。 */
@@ -21,7 +23,8 @@ export const LOCAL_PREF_KEYS = [
   RANGE_KEY,
   DURATION_KEY,
   FOCUS_STORE_KEY,
-  TREND_STORE_KEY
+  TREND_STORE_KEY,
+  TREND_SELECTED_KEY
 ];
 
 let rangeDays = $state<number>(readRange());

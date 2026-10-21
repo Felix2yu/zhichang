@@ -101,6 +101,30 @@ export function computeActivity(
   };
 }
 
+/**
+ * 由 /api/coverage 的「有数据天数 + 距今天数」算活跃度，不依赖完整的日级序列。
+ *
+ * 与 computeActivity 共用同一套公式（同样的 RECENCY_TAU 与 consistency 权重），
+ * 只是输入从「点数组」换成「覆盖度统计」——趋势页为了排序不再需要拉全量序列，
+ * 一次 GROUP BY 就够了。两处公式必须一致，否则同一指标在两页排位不同。
+ */
+export function activityFromCoverage(
+  daysSince: number | null,
+  activeDays: number,
+  windowDays = ACTIVITY_WINDOW_DAYS
+): ActivityStats {
+  if (daysSince === null || daysSince < 0) return { ...NO_ACTIVITY };
+  const coverage = windowDays > 0 ? Math.min(1, activeDays / windowDays) : 0;
+  const recency = Math.exp(-daysSince / RECENCY_TAU);
+  const consistency = 0.45 + 0.55 * Math.sqrt(coverage);
+  return {
+    score: Math.round(recency * consistency * 1000) / 1000,
+    daysSince,
+    activeDays,
+    coverage
+  };
+}
+
 /** 可参与活跃度排序的条目。 */
 export type Rankable = {
   metric: string;
