@@ -588,6 +588,193 @@ func TestSleepDetail(t *testing.T) {
 	})
 }
 
+func TestSleepDelete(t *testing.T) {
+	// 两晚完整数据：会话 + 分期（含跨零点那段），外加一个无关指标验证不误伤。
+	seed := func(t *testing.T) (d *Deps, old, recent string) {
+		t.Helper()
+		d = newDeps(t)
+		old, recent = day(-3), day(-1)
+		putSleep(t, d, *sleepNight(old), *sleepNight(recent))
+		putSamples(t, d,
+			seg(old, 23*60+30, 40, "AsleepDeep", "Apple Watch"),
+			seg(old, 24*60+10, 120, "AsleepCore", "Apple Watch"),
+			seg(recent, 23*60+30, 40, "AsleepDeep", "Apple Watch"),
+			seg(recent, 24*60+10, 120, "AsleepCore", "Apple Watch"),
+			daily("step_count", old, 100),
+			daily("step_count", recent, 200),
+		)
+		if err := postgres.NewRollup(d.DB, d.Metrics).Recompute(context.Background(),
+			[]string{old, recent}, []string{postgres.SleepMetric, "step_count"}); err != nil {
+			t.Fatalf("播种天级聚合失败: %v", err)
+		}
+		return d, old, recent
+	}
+	count := func(t *testing.T, d *Deps, q string, args ...any) int64 {
+		t.Helper()
+		var n int64
+		if err := d.DB.Pool.QueryRow(context.Background(), q, args...).Scan(&n); err != nil {
+			t.Fatalf("查询条数失败: %v", err)
+		}
+		return n
+	}
+	dayValue := func(t *testing.T, d *Deps, metric, date string) (float64, bool) {
+		t.Helper()
+		var v float64
+		err := d.DB.Pool.QueryRow(context.Background(),
+			`SELECT value FROM daily_metrics_day WHERE metric=$1 AND local_date=$2`, metric, date).Scan(&v)
+		if err != nil {
+			return 0, false
+		}
+		return v, true
+	}
+
+	t.Run("预演不删数据", func(t *testing.T) {
+		d, _, recent := seed(t)
+		out := text(t, func() (string, error) { return d.SleepDelete(context.Background(), recent, recent, false) })
+		requireParts(t, out,
+			"睡眠记录清理预演（"+recent+" ~ "+recent+"）",
+			"- 睡眠会话 1 条",
+			// 跨零点那段 local_date 是次日，也必须在预演里算进去
+			"- 分期样本 2 条",
+			"confirm=true",
+		)
+		if n := count(t, d, `SELECT count(*) FROM sleep_sessions WHERE local_date=$1`, recent); n != 1 {
+			t.Errorf("预演后会话应原样保留，实际 %d", n)
+		}
+		if n := count(t, d, `SELECT count(*) FROM samples WHERE metric='sleep_analysis'`); n != 4 {
+			t.Errorf("预演后分期样本应原样保留，实际 %d", n)
+		}
+	})
+
+	t.Run("确认后删会话与分期并重算天级值", func(t *testing.T) {
+		d, old, recent := seed(t)
+		// 排一条待重算任务：删除后应一并清掉，不能让它把已删的日期又算一遍。
+		if _, err := d.DB.Pool.Exec(context.Background(),
+			`INSERT INTO rollup_queue (local_date, metric) VALUES ($1,$2)`, recent, postgres.SleepMetric); err != nil {
+			t.Fatal(err)
+		}
+
+		out := text(t, func() (string, error) { return d.SleepDelete(context.Background(), recent, recent, true) })
+		requireParts(t, out,
+			"睡眠记录已清空（"+recent+" ~ "+recent+"）",
+			"删除睡眠会话 1 条、分期样本 2 条",
+			"现在可以重新导入睡眠数据了",
+		)
+
+		if n := count(t, d, `SELECT count(*) FROM sleep_sessions WHERE local_date=$1`, recent); n != 0 {
+			t.Errorf("目标日期会话应删净，实际 %d", n)
+		}
+		if n := count(t, d, `SELECT count(*) FROM sleep_sessions WHERE local_date=$1`, old); n != 1 {
+			t.Errorf("范围外的晚上不应被动，实际 %d", n)
+		}
+		if n := count(t, d, `SELECT count(*) FROM samples WHERE metric='sleep_analysis'`); n != 2 {
+			t.Errorf("应只剩范围外那晚的两段分期，实际 %d", n)
+		}
+		// 目标那晚 00:10 的分段 local_date 落到了 nextDay(recent)，按日期删会漏，
+		// 必须靠入睡时间窗一起删掉。
+		if n := count(t, d, `SELECT count(*) FROM samples WHERE metric='sleep_analysis' AND local_date=$1`, nextDay(recent)); n != 0 {
+			t.Errorf("跨零点分期应随会话一起删掉，实际还剩 %d", n)
+		}
+
+		if _, ok := dayValue(t, d, postgres.SleepMetric, recent); ok {
+			t.Error("目标日期的天级睡眠值应删掉")
+		}
+		if v, ok := dayValue(t, d, postgres.SleepMetric, old); !ok || v != 7.5 {
+			t.Errorf("范围外的天级睡眠值应保留并重算，实际 %v/%v", v, ok)
+		}
+		if v, ok := dayValue(t, d, "step_count", recent); !ok || v != 200 {
+			t.Errorf("无关指标的天级值不应被清理，实际 %v/%v", v, ok)
+		}
+		if n := count(t, d, `SELECT count(*) FROM rollup_queue WHERE metric=$1`, postgres.SleepMetric); n != 0 {
+			t.Errorf("删除日期的待重算任务应清掉，实际 %d", n)
+		}
+
+		sleepOut := text(t, func() (string, error) { return d.Sleep(context.Background(), recent, recent) })
+		requireParts(t, sleepOut, recent+" ~ "+recent+" 没有睡眠记录")
+		oldOut := text(t, func() (string, error) { return d.Sleep(context.Background(), old, old) })
+		requireParts(t, oldOut, "| "+old+" | 7.5 |")
+	})
+
+	t.Run("相邻夜晚的后半夜不被误删", func(t *testing.T) {
+		d := newDeps(t)
+		prev, target := day(-2), day(-1)
+		putSleep(t, d, *sleepNight(prev), *sleepNight(target))
+		putSamples(t, d,
+			seg(prev, 23*60+30, 40, "AsleepDeep", "Apple Watch"),
+			seg(prev, 24*60+10, 120, "AsleepCore", "Apple Watch"),
+			seg(target, 23*60+30, 40, "AsleepDeep", "Apple Watch"),
+			seg(target, 24*60+10, 120, "AsleepCore", "Apple Watch"),
+		)
+
+		preview := text(t, func() (string, error) { return d.SleepDelete(context.Background(), target, target, false) })
+		requireParts(t, preview, "- 睡眠会话 1 条", "- 分期样本 2 条")
+
+		text(t, func() (string, error) { return d.SleepDelete(context.Background(), target, target, true) })
+		// 前一晚 00:10 的分段 local_date 正好落在被删区间里，但它属于要保留的
+		// 前一晚（时间窗内），不能按日期当成孤儿段清掉。
+		if n := count(t, d, `SELECT count(*) FROM samples WHERE metric='sleep_analysis'`); n != 2 {
+			t.Errorf("前一晚的分期应完整保留，实际剩 %d", n)
+		}
+		if n := count(t, d, `SELECT count(*) FROM samples WHERE metric='sleep_analysis' AND local_date=$1`, target); n != 1 {
+			t.Errorf("前一晚跨零点的分段不应被误删，实际剩 %d", n)
+		}
+	})
+
+	t.Run("留空即全部历史", func(t *testing.T) {
+		d, old, recent := seed(t)
+		// 多留一天只有分段、没有会话的数据。
+		putSamples(t, d, seg(day(-5), 23*60+30, 40, "AsleepDeep", "Apple Watch"))
+
+		preview := text(t, func() (string, error) { return d.SleepDelete(context.Background(), "", "", false) })
+		requireParts(t, preview, "（全部历史）", "- 睡眠会话 2 条", "- 分期样本 5 条")
+
+		text(t, func() (string, error) { return d.SleepDelete(context.Background(), "", "", true) })
+		if n := count(t, d, `SELECT count(*) FROM sleep_sessions`); n != 0 {
+			t.Errorf("全部历史应删掉所有会话，实际剩 %d", n)
+		}
+		if n := count(t, d, `SELECT count(*) FROM samples WHERE metric='sleep_analysis'`); n != 0 {
+			t.Errorf("全部历史应删掉所有分期，实际剩 %d", n)
+		}
+		if n := count(t, d, `SELECT count(*) FROM daily_metrics_day WHERE metric=$1`, postgres.SleepMetric); n != 0 {
+			t.Errorf("全部历史应清掉天级睡眠值，实际剩 %d", n)
+		}
+		// 其他指标不受影响：两个旧日期的步数都应留着
+		for _, date := range []string{old, recent} {
+			if _, ok := dayValue(t, d, "step_count", date); !ok {
+				t.Errorf("%s 的步数天级值不应被删除", date)
+			}
+		}
+	})
+
+	t.Run("只剩天级值也能清掉", func(t *testing.T) {
+		d := newDeps(t)
+		stale := day(-5)
+		if _, err := d.DB.Pool.Exec(context.Background(),
+			`INSERT INTO daily_metrics_day (local_date, metric, value) VALUES ($1,$2,7)`,
+			stale, postgres.SleepMetric); err != nil {
+			t.Fatal(err)
+		}
+		preview := text(t, func() (string, error) { return d.SleepDelete(context.Background(), stale, stale, false) })
+		requireParts(t, preview, "没有睡眠会话或分期样本，但有 1 天的天级睡眠值残留")
+
+		text(t, func() (string, error) { return d.SleepDelete(context.Background(), stale, stale, true) })
+		if n := count(t, d, `SELECT count(*) FROM daily_metrics_day WHERE metric=$1 AND local_date=$2`, postgres.SleepMetric, stale); n != 0 {
+			t.Errorf("残留天级值应清掉，实际剩 %d", n)
+		}
+	})
+
+	t.Run("空库与非法区间", func(t *testing.T) {
+		d := newDeps(t)
+		out := text(t, func() (string, error) { return d.SleepDelete(context.Background(), day(-1), day(-1), false) })
+		requireParts(t, out, "范围内没有睡眠记录")
+		out = text(t, func() (string, error) { return d.SleepDelete(context.Background(), day(-1), day(-1), true) })
+		requireParts(t, out, "未做任何修改")
+
+		msg := fail(t, func() (string, error) { return d.SleepDelete(context.Background(), day(0), day(-1), false) })
+		requireParts(t, msg, "结束日期早于起始日期")
+	})
+}
+
 func TestWorkouts(t *testing.T) {
 	t.Run("列表与空字段", func(t *testing.T) {
 		d := newDeps(t)
@@ -830,6 +1017,7 @@ func TestDBErrorPaths(t *testing.T) {
 		{"Latest", func(c context.Context) (string, error) { return d.Latest(c, "step_count") }},
 		{"Sleep", func(c context.Context) (string, error) { return d.Sleep(c, day(-29), day(0)) }},
 		{"SleepDetail", func(c context.Context) (string, error) { return d.SleepDetail(c, day(0)) }},
+		{"SleepDelete", func(c context.Context) (string, error) { return d.SleepDelete(c, "", "", true) }},
 		{"Workouts", func(c context.Context) (string, error) { return d.Workouts(c, day(-29), day(0)) }},
 		{"Correlation", func(c context.Context) (string, error) {
 			return d.Correlation(c, "step_count", "step_count", day(-29), day(0))

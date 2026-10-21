@@ -27,7 +27,7 @@ func TestMaskNumbers(t *testing.T) {
 	}
 }
 
-// TestRedactHidesEveryToolValue 把 11 个工具都跑一遍脱敏档。
+// TestRedactHidesEveryToolValue 把 12 个工具都跑一遍脱敏档。
 //
 // 断言用的是「种进去的值有没有出现」而不是「文本里还有没有数字」：
 // 前者能抓到漏网的取值点（比如某个表格列没走占位符），后者会被保留的日期干扰。
@@ -85,6 +85,10 @@ func TestRedactHidesEveryToolValue(t *testing.T) {
 		{"coverage", func() (string, error) { return d.Coverage(ctx, 7) }},
 		{"correlation", func() (string, error) {
 			return d.Correlation(ctx, "step_count", "active_energy", day(-6), today)
+		}},
+		// 只跑预演分支：这个工具跑脱敏档时也不能真把库清了
+		{"sleep_delete_preview", func() (string, error) {
+			return d.SleepDelete(ctx, day(-6), today, false)
 		}},
 	}
 

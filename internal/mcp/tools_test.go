@@ -22,6 +22,7 @@ var toolNames = []string{
 	"health_latest",
 	"health_sleep",
 	"health_sleep_detail",
+	"health_sleep_delete",
 	"health_workouts",
 	"health_ecg",
 	"health_data_coverage",
@@ -132,6 +133,23 @@ func TestToolRegistry(t *testing.T) {
 	// a / b 没写 omitempty，所以是必填项；schema 必须真的把它们标成 required
 	requireParts(t, string(corrs), `"required"`)
 
+	// 删除工具的安全语义必须写进 schema：模型只能看到这些说明，
+	// 不能让它在用户没要求时凭默认值就把数据清掉。
+	del := byName["health_sleep_delete"]
+	if del == nil {
+		t.Fatal("health_sleep_delete 未注册")
+	}
+	dels, err := json.Marshal(del.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireParts(t, string(dels), `"confirm"`, "留空表示不限")
+	requireParts(t, del.Description, "confirm=true", "不可撤销", "预演")
+	// 危险操作要让客户端看得见：缺了注解，UI 会把它当普通查询工具。
+	if del.Annotations == nil || del.Annotations.DestructiveHint == nil || !*del.Annotations.DestructiveHint {
+		t.Error("health_sleep_delete 应标记为 destructive")
+	}
+
 	// 出参 schema 由 Result 推导，客户端据此校验 structuredContent
 	out, err := json.Marshal(q.OutputSchema)
 	if err != nil {
@@ -204,6 +222,39 @@ func TestToolsOverTransport(t *testing.T) {
 		requireParts(t, detail, "睡眠详情 "+date, "  23:30–00:10 深睡（40 分）", "心率 最低 58 bpm")
 	})
 
+	t.Run("清空睡眠先预演再确认", func(t *testing.T) {
+		d := newDeps(t)
+		date := day(-1)
+		putSleep(t, d, *sleepNight(date))
+		putSamples(t, d,
+			seg(date, 23*60+30, 40, "AsleepDeep", "Apple Watch"),
+			seg(date, 24*60+10, 120, "AsleepCore", "Apple Watch"),
+		)
+		cs := connect(t, d)
+
+		preview, isErr := callTool(t, cs, "health_sleep_delete", map[string]any{"from": date, "to": date})
+		if isErr {
+			t.Fatalf("预演不该报错: %s", preview)
+		}
+		requireParts(t, preview, "睡眠记录清理预演（"+date+" ~ "+date+"）",
+			"- 睡眠会话 1 条", "- 分期样本 2 条", "confirm=true")
+		// 预演必须真的不动数据：确认之前还能正常查到这一晚。
+		still, _ := callTool(t, cs, "health_sleep", map[string]any{"from": date, "to": date})
+		requireParts(t, still, "| "+date+" | 7.5 |")
+
+		done, isErr := callTool(t, cs, "health_sleep_delete", map[string]any{
+			"from": date, "to": date, "confirm": true,
+		})
+		if isErr {
+			t.Fatalf("确认删除不该报错: %s", done)
+		}
+		requireParts(t, done, "睡眠记录已清空（"+date+" ~ "+date+"）",
+			"删除睡眠会话 1 条、分期样本 2 条", "现在可以重新导入睡眠数据了")
+
+		gone, _ := callTool(t, cs, "health_sleep", map[string]any{"from": date, "to": date})
+		requireParts(t, gone, date+" ~ "+date+" 没有睡眠记录")
+	})
+
 	t.Run("运动", func(t *testing.T) {
 		d := newDeps(t)
 		putWorkouts(t, d, workout(day(0), "户外跑步", 32.4, 299.6, 5.234))
@@ -251,6 +302,7 @@ func TestToolErrorBranches(t *testing.T) {
 		{"坏日期序列", "health_query", map[string]any{"metrics": "step_count", "from": "昨天"}, "日期格式应为 YYYY-MM-DD"},
 		{"坏日期睡眠", "health_sleep", map[string]any{"from": "昨天"}, "日期格式应为 YYYY-MM-DD"},
 		{"坏日期睡眠详情", "health_sleep_detail", map[string]any{"date": "昨天"}, "日期格式应为 YYYY-MM-DD"},
+		{"坏日期清空", "health_sleep_delete", map[string]any{"from": "昨天", "confirm": true}, "日期格式应为 YYYY-MM-DD"},
 		{"坏日期运动", "health_workouts", map[string]any{"to": "昨天"}, "日期格式应为 YYYY-MM-DD"},
 		{"相关性未登记", "health_correlation", map[string]any{"a": "bogus", "b": "step_count"}, "指标未登记"},
 	}
