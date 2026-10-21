@@ -41,6 +41,14 @@
     type RhythmNight
   } from '#lib/sleep-rhythm';
   import RangePicker from '#lib/components/RangePicker.svelte';
+  import Card from '#lib/components/ui/Card.svelte';
+  import Button from '#lib/components/ui/Button.svelte';
+  import CardHeader from '#lib/components/ui/CardHeader.svelte';
+  import DataTable from '#lib/components/DataTable.svelte';
+  import StatTile from '#lib/components/ui/StatTile.svelte';
+  import ErrorBanner from '#lib/components/ui/ErrorBanner.svelte';
+  import PageHeader from '#lib/components/ui/PageHeader.svelte';
+  import InfoNote from '#lib/components/ui/InfoNote.svelte';
   import TrendChart from '#lib/components/TrendChart.svelte';
   import SleepTimeline from '#lib/components/SleepTimeline.svelte';
   import SleepScheduleChart from '#lib/components/SleepScheduleChart.svelte';
@@ -536,17 +544,17 @@
 </script>
 
 <div class="space-y-4">
-  <div class="flex flex-wrap items-baseline justify-between gap-2">
-    <h1 class="text-[15px] font-medium">睡眠</h1>
-    <RangePicker value={range} onchange={(r) => ((range = r), load())} />
-  </div>
+  <PageHeader>
+    睡眠
+    {#snippet actions()}
+      <RangePicker value={range} onchange={(r) => ((range = r), load())} />
+    {/snippet}
+  </PageHeader>
 
-  {#if error}
-    <div class="card px-4 py-3 text-[13px] text-[var(--color-danger)]">{error}</div>
-  {/if}
+  <ErrorBanner {error} />
 
   <!-- 睡眠评分：按 Apple 公开的三项权重复刻（时长 50 + 就寝 30 + 中断 20） -->
-  <div class="card p-4">
+  <Card>
     {#if loading}
       <div class="text-[12px] text-[var(--color-ink-500)]">睡眠评分</div>
       <div class="mt-1.5 h-[32px] w-24 animate-pulse rounded bg-[var(--color-line)]"></div>
@@ -566,13 +574,13 @@
             <span class="text-[11px] text-[var(--color-ink-500)]">/ 100</span>
           </div>
         </div>
-        <p class="max-w-[300px] text-[10px] leading-relaxed text-[var(--color-ink-500)]/80">
+        <InfoNote size="sm" class="max-w-[300px]">
           <span class="block"
             >自算口径：睡眠时长 50 + 就寝规律性 30 + 中断 20；基准取自你自己的历史（时长 30 晚、就寝
             13 晚）。</span
           >
           <span class="block">Apple 未开放评分接口，本分值与 iPhone 上显示的数字不保证一致。</span>
-        </p>
+        </InfoNote>
       </div>
 
       <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -610,60 +618,54 @@
           : '评分要与自己的历史比较，至少需要 5 晚带入睡时刻的记录'}
       </div>
     {/if}
-  </div>
+  </Card>
 
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-    <div class="card px-4 py-3">
-      <div class="text-[12px] text-[var(--color-ink-500)]">平均睡眠评分</div>
-      <div class="num mt-1 text-[20px] font-medium">
-        {avgScore === null ? '—' : Math.round(avgScore)}
-      </div>
-    </div>
-    <div class="card px-4 py-3">
-      <div class="text-[12px] text-[var(--color-ink-500)]">平均总睡眠</div>
-      <div class="num mt-1 text-[20px] font-medium">
-        {avg === null ? '—' : formatDurationHours(avg)}
-      </div>
-      {#if sleepGoal && goalSamples > 0}
-        <div class="mt-0.5 text-[10px] text-[var(--color-ink-500)]/70">
-          目标 {formatDurationHours(sleepGoal.target)} · 达标 {goalHit}/{goalSamples} 晚
-        </div>
-      {/if}
-    </div>
-    <div class="card px-4 py-3">
-      <div class="text-[12px] text-[var(--color-ink-500)]">平均入睡潜伏期</div>
-      <div class="num mt-1 text-[20px] font-medium">
-        {structure.latencyMin === null ? '—' : `${Math.round(structure.latencyMin)} 分`}
-      </div>
-      <div class="mt-0.5 text-[10px] text-[var(--color-ink-500)]/70">
-        {#if structure.latencyMin === null}
-          导出未含上床时刻
-        {:else}
-          上床到睡着 · 中位数 · 基于 {structure.samples.latency} 晚
+    <StatTile label="平均睡眠评分" value={avgScore === null ? '—' : Math.round(avgScore)} />
+    <StatTile label="平均总睡眠" value={avg === null ? '—' : formatDurationHours(avg)}>
+      {#snippet note()}
+        {#if sleepGoal && goalSamples > 0}
+          <span class="mt-0.5 block text-[10px] text-[var(--color-ink-500)]/70">
+            目标 {formatDurationHours(sleepGoal.target)} · 达标 {goalHit}/{goalSamples} 晚
+          </span>
         {/if}
-      </div>
-    </div>
-    <div class="card px-4 py-3">
-      <div class="text-[12px] text-[var(--color-ink-500)]">记录天数</div>
-      <div class="num mt-1 text-[20px] font-medium">{rows.length}</div>
-      <div
-        class="mt-0.5 text-[10px] {coverage.missing.length > 0
-          ? 'text-[var(--color-warn)]'
-          : 'text-[var(--color-ink-500)]/70'}"
-        title={coverage.missing.length > 0 ? `断档：${coverage.missing.join('、')}` : ''}
-      >
-        {#if coverage.current > 0}
-          当前连续 {coverage.current} 晚 · 最长 {coverage.longest} 晚{coverage.missing.length > 0
-            ? ` · 断档 ${coverage.missing.length} 晚`
-            : ''}
-        {:else}
-          暂无记录
-        {/if}
-      </div>
-    </div>
+      {/snippet}
+    </StatTile>
+    <StatTile
+      label="平均入睡潜伏期"
+      value={structure.latencyMin === null ? '—' : `${Math.round(structure.latencyMin)} 分`}
+    >
+      {#snippet note()}
+        <span class="mt-0.5 block text-[10px] text-[var(--color-ink-500)]/70">
+          {#if structure.latencyMin === null}
+            导出未含上床时刻
+          {:else}
+            上床到睡着 · 中位数 · 基于 {structure.samples.latency} 晚
+          {/if}
+        </span>
+      {/snippet}
+    </StatTile>
+    <StatTile label="记录天数" value={rows.length}>
+      {#snippet note()}
+        <span
+          class="mt-0.5 block text-[10px] {coverage.missing.length > 0
+            ? 'text-[var(--color-warn)]'
+            : 'text-[var(--color-ink-500)]/70'}"
+          title={coverage.missing.length > 0 ? `断档：${coverage.missing.join('、')}` : ''}
+        >
+          {#if coverage.current > 0}
+            当前连续 {coverage.current} 晚 · 最长 {coverage.longest} 晚{coverage.missing.length > 0
+              ? ` · 断档 ${coverage.missing.length} 晚`
+              : ''}
+          {:else}
+            暂无记录
+          {/if}
+        </span>
+      {/snippet}
+    </StatTile>
   </div>
 
-  <div class="card p-4">
+  <Card>
     <div class="mb-2 flex flex-wrap items-baseline gap-2 text-[13px] font-medium">
       评分趋势{#if grain !== 'night'}<span
           class="text-[11px] font-normal text-[var(--color-ink-500)]">· {GRAIN_LABEL[grain]}</span
@@ -684,12 +686,12 @@
     {:else}
       <TrendChart series={scoreSeries} height={220} yUnit="分" />
     {/if}
-  </div>
+  </Card>
 
   <!-- 夜间心率：睡眠内部指标之外的生理交叉验证。整屏范围内一项样本都没有才不渲染 -->
   {#if hasNightHr}
     {@const meta = nightMeta(DEFAULT_NIGHT_METRIC)}
-    <div class="card p-4">
+    <Card>
       <div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <span class="text-[13px] font-medium">{meta.label}{night ? ` · ${night}` : ''}</span>
         {#if grain !== 'night'}
@@ -735,17 +737,17 @@
       <div class="mt-2">
         <TrendChart series={nightHrSeries} height={200} yUnit={meta.unit} />
       </div>
-      <div class="mt-1 text-[10px] leading-relaxed text-[var(--color-ink-500)]/80">
+      <InfoNote size="sm" class="mt-1">
         取入睡到起床窗口内的心率样本（跨零点的后半夜也算这一晚，不按记录日期）；
         「最低」是窗口内各段最小值里的最小，与 iPhone 睡眠详情页同口径，跟白天的静息心率不是一回事。
-      </div>
-    </div>
+      </InfoNote>
+    </Card>
   {/if}
 
   <!-- 周期性节律：工作日 vs 周末，睡眠结构：效率与各阶段占比 -->
   <div class="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
-    <div class="card p-4">
-      <div class="mb-2 text-[13px] font-medium">睡眠效率与结构</div>
+    <Card>
+      <CardHeader>睡眠效率与结构</CardHeader>
       {#if loading}
         <div
           class="flex h-[200px] items-center justify-center text-[13px] text-[var(--color-ink-500)]"
@@ -797,14 +799,14 @@
             </div>
           {/each}
         </div>
-        <div class="mt-3 text-[10px] leading-relaxed text-[var(--color-ink-500)]/80">
+        <InfoNote size="sm" class="mt-3">
           三条共用 0–60% 的尺子，可直接横向比较；灰色竖线为典型值（深睡 20% · 核心 50% · REM 22%）。
-        </div>
+        </InfoNote>
       {/if}
-    </div>
+    </Card>
 
-    <div class="card p-4">
-      <div class="mb-2 text-[13px] font-medium">周期性节律</div>
+    <Card>
+      <CardHeader>周期性节律</CardHeader>
       {#if loading}
         <div
           class="flex h-[200px] items-center justify-center text-[13px] text-[var(--color-ink-500)]"
@@ -836,16 +838,16 @@
             height={Math.max(200, rhythmLanes.length * 30 + 60)}
           />
         </div>
-        <div class="mt-1 text-[10px] leading-relaxed text-[var(--color-ink-500)]/80">
+        <InfoNote size="sm" class="mt-1">
           每个星期几的就寝与起床时刻中位数，灰色区间为睡眠时长。悬停查看各晚离散度。
-        </div>
+        </InfoNote>
       {/if}
-    </div>
+    </Card>
   </div>
 
   <!-- 睡眠时间表：逐晚的分期铺在同一把「相对 18:00」的横轴上，就寝早晚一眼看出来 -->
-  <div class="card p-4">
-    <div class="mb-2 text-[13px] font-medium">睡眠时间表</div>
+  <Card>
+    <CardHeader>睡眠时间表</CardHeader>
     {#if loading}
       <div
         class="flex h-[200px] items-center justify-center text-[13px] text-[var(--color-ink-500)]"
@@ -854,16 +856,16 @@
       </div>
     {:else}
       <SleepScheduleChart nights={schedule.rows} onselect={selectNight} />
-      <div class="mt-1 text-[10px] leading-relaxed text-[var(--color-ink-500)]/80">
+      <InfoNote size="sm" class="mt-1">
         每行一晚（新夜在上），横轴是「相对 18:00 的本夜时间轴」，所以凌晨的时刻不会把行切断； 留白 =
         那一晚没有分段记录。点某行查看那一晚。
         {#if schedule.hidden > 0}当前只显示最近 {SCHEDULE_MAX_NIGHTS} 晚，另有 {schedule.hidden} 晚未画。{/if}
-      </div>
+      </InfoNote>
     {/if}
-  </div>
+  </Card>
 
   <!-- 分期时间线：看清每一段的时序结构，聚合柱状图看不到这个 -->
-  <div class="card p-4">
+  <Card>
     <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-baseline gap-2">
         <span class="text-[13px] font-medium">睡眠分期时间线</span>
@@ -873,16 +875,16 @@
       </div>
       {#if nightChoices.length > 1 && hasTimeline}
         <div class="flex items-center gap-1">
-          <button
-            class="rounded border border-[var(--color-line)] px-2 py-0.5 text-[11px] text-[var(--color-ink-700)] disabled:opacity-40"
+          <Button
+            size="sm"
             disabled={stageLoading || nightChoices.indexOf(night || nightChoices[0]) <= 0}
-            onclick={() => stepNight(-1)}>← 前一晚</button
+            onclick={() => stepNight(-1)}>← 前一晚</Button
           >
-          <button
-            class="rounded border border-[var(--color-line)] px-2 py-0.5 text-[11px] text-[var(--color-ink-700)] disabled:opacity-40"
+          <Button
+            size="sm"
             disabled={stageLoading ||
               nightChoices.indexOf(night || nightChoices[0]) >= nightChoices.length - 1}
-            onclick={() => stepNight(1)}>后一晚 →</button
+            onclick={() => stepNight(1)}>后一晚 →</Button
           >
         </div>
       {/if}
@@ -898,7 +900,7 @@
       </div>
     {/if}
     {#if stageError}
-      <div class="text-[12px] text-[var(--color-danger)]">{stageError}</div>
+      <ErrorBanner error={stageError} bare size="sm" />
     {:else if stageLoading}
       <div
         class="flex h-[240px] items-center justify-center text-[13px] text-[var(--color-ink-500)]"
@@ -908,10 +910,10 @@
     {:else if !hasTimeline}
       <div class="flex flex-col items-center justify-center gap-1 py-10 text-center">
         <div class="text-[13px] text-[var(--color-ink-700)]">暂无分期数据</div>
-        <div class="max-w-[340px] text-[11px] leading-relaxed text-[var(--color-ink-500)]">
+        <InfoNote dim={false} class="max-w-[340px]">
           这一晚只有睡眠总时长等聚合值，没有逐段的深睡 / 核心 / REM 记录。<br />
           需要导出端在 <span class="num">sleep_analysis</span> 里带上分段数据。
-        </div>
+        </InfoNote>
       </div>
     {:else}
       {#if phyOptions.length > 1}
@@ -969,9 +971,9 @@
         </span>
       </div>
     {/if}
-  </div>
+  </Card>
 
-  <div class="card p-4">
+  <Card>
     <div class="mb-2 flex flex-wrap items-baseline gap-2 text-[13px] font-medium">
       睡眠分期{#if grain !== 'night'}<span
           class="text-[11px] font-normal text-[var(--color-ink-500)]">· {GRAIN_LABEL[grain]}</span
@@ -986,9 +988,9 @@
     {:else}
       <TrendChart series={stageSeries} height={260} unit="h" digits={1} />
     {/if}
-  </div>
+  </Card>
 
-  <div class="card p-4">
+  <Card>
     <div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
       <div class="flex flex-wrap items-baseline gap-2 text-[13px] font-medium">
         总睡眠时长{#if grain !== 'night'}<span
@@ -1018,50 +1020,42 @@
           : null}
       />
     {/if}
-  </div>
+  </Card>
 
-  <div class="card overflow-hidden">
-    <div class="overflow-x-auto">
-      <table class="w-full text-[13px] {hasNightHr ? 'min-w-[700px]' : 'min-w-[620px]'}">
-        <thead class="bg-[var(--color-surface-2)] text-[12px] text-[var(--color-ink-500)]">
-          <tr>
-            <th class="px-4 py-2 text-left font-normal">日期</th>
-            <th class="px-4 py-2 text-right font-normal">总睡眠 (h)</th>
-            <th class="px-4 py-2 text-right font-normal">深睡</th>
-            <th class="px-4 py-2 text-right font-normal">核心</th>
-            <th class="px-4 py-2 text-right font-normal">REM</th>
-            <th class="px-4 py-2 text-right font-normal">清醒</th>
-            <th class="px-4 py-2 text-right font-normal">在床</th>
-            {#if hasNightHr}
-              <th class="px-4 py-2 text-right font-normal">夜间最低 (bpm)</th>
-            {/if}
-            <th class="px-4 py-2 text-left font-normal">来源</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each [...sessions].reverse() as r (r.local_date + r.source + (r.sleep_start ?? ''))}
-            <tr
-              class="cursor-pointer border-t border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"
-              class:bg-[var(--color-surface-3)]={r.local_date === night}
-              title="查看这一晚"
-              onclick={() => selectNight(r.local_date)}
-            >
-              <td class="num px-4 py-2">{r.local_date}</td>
-              <td class="num px-4 py-2 text-right">{(r.total_sleep_hr ?? 0).toFixed(1)}</td>
-              <td class="num px-4 py-2 text-right">{(r.deep_hr ?? 0).toFixed(1)}</td>
-              <td class="num px-4 py-2 text-right">{(r.core_hr ?? 0).toFixed(1)}</td>
-              <td class="num px-4 py-2 text-right">{(r.rem_hr ?? 0).toFixed(1)}</td>
-              <td class="num px-4 py-2 text-right">{cell(r.awake_hr)}</td>
-              <td class="num px-4 py-2 text-right">{(r.in_bed_hr ?? 0).toFixed(1)}</td>
-              {#if hasNightHr}
-                {@const hr = nightIdx.get(nightKey(DEFAULT_NIGHT_METRIC, r.local_date))}
-                <td class="num px-4 py-2 text-right">{hr ? Math.round(hr.min) : '—'}</td>
-              {/if}
-              <td class="px-4 py-2">{r.source}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  </div>
+  <Card pad="none" class="overflow-hidden">
+    <DataTable
+      rows={[...sessions].reverse()}
+      rowKey={(r) => r.local_date + r.source + (r.sleep_start ?? '')}
+      selectedKey={night}
+      onrowclick={(r) => selectNight(r.local_date)}
+      rowTitle={() => '查看这一晚'}
+      minWidth={hasNightHr ? '700px' : '620px'}
+      columns={[
+        { label: '日期' },
+        { label: '总睡眠 (h)', align: 'right' },
+        { label: '深睡', align: 'right' },
+        { label: '核心', align: 'right' },
+        { label: 'REM', align: 'right' },
+        { label: '清醒', align: 'right' },
+        { label: '在床', align: 'right' },
+        ...(hasNightHr ? [{ label: '夜间最低 (bpm)', align: 'right' as const }] : []),
+        { label: '来源' }
+      ]}
+    >
+      {#snippet children(r)}
+        <td class="num px-4 py-2">{r.local_date}</td>
+        <td class="num px-4 py-2 text-right">{(r.total_sleep_hr ?? 0).toFixed(1)}</td>
+        <td class="num px-4 py-2 text-right">{(r.deep_hr ?? 0).toFixed(1)}</td>
+        <td class="num px-4 py-2 text-right">{(r.core_hr ?? 0).toFixed(1)}</td>
+        <td class="num px-4 py-2 text-right">{(r.rem_hr ?? 0).toFixed(1)}</td>
+        <td class="num px-4 py-2 text-right">{cell(r.awake_hr)}</td>
+        <td class="num px-4 py-2 text-right">{(r.in_bed_hr ?? 0).toFixed(1)}</td>
+        {#if hasNightHr}
+          {@const hr = nightIdx.get(nightKey(DEFAULT_NIGHT_METRIC, r.local_date))}
+          <td class="num px-4 py-2 text-right">{hr ? Math.round(hr.min) : '—'}</td>
+        {/if}
+        <td class="px-4 py-2">{r.source}</td>
+      {/snippet}
+    </DataTable>
+  </Card>
 </div>
