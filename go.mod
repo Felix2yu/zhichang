@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/fergusstrange/embedded-postgres v1.34.0
-	github.com/go-chi/chi/v5 v5.4.0
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 )
