@@ -59,6 +59,15 @@ updates:
         patterns: ["*"]
         update-types: ["major"]
 
+    # 与 preset 同步：typescript 的 major 不提 PR。web 的 typescript 是精确钉死的 6.0.3（无 ^），
+    # 给 svelte-kit sync 与 svelte-check 当 JS 编译器 API 宿主。实测 PR#12 把它升到 7.0.2 后，
+    # CI 在 pnpm run check 阶段崩：Cannot read properties of undefined (reading 'readFile')，
+    # 栈落在 @sveltejs/kit@3.0.1 的 vite build handler。理由与实测见
+    # Felix2yu/.github/docs/dependabot.md 第六节
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
   # ── Docker 基础镜像 ─────────────────────────────────────────────────
   - package-ecosystem: "docker"
     directory: "/"
