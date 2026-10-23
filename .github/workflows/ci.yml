@@ -32,6 +32,9 @@ jobs:
       # 跑 ./... 会因「no matching files found」失败
       test-packages: ./internal/...
       web-dir: web
+      # lint 纳入 CI：本仓 `pnpm run lint` 已本地实测绿（prettier --check + eslint）。
+      # 只有构建侧被验证过是不够的 —— typescript-eslint 对 TS 7 是加载期硬失败。
+      web-lint-command: pnpm run lint
       # 带类型的项目要把类型检查并入构建，否则 build 绿但 svelte-check 有问题没人知道
       web-build-command: pnpm run check && pnpm run build
 
